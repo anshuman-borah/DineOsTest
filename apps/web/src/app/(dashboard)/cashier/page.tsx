@@ -84,19 +84,28 @@ function CloseShiftModal({ shiftId, onClose, onClosed }: { shiftId: string; onCl
     </div>
   );
 }
-
 export default function CashierDashboardPage() {
   const qc = useQueryClient();
   const { branchId, user } = useAuthStore();
   const [openShiftModal, setOpenShiftModal] = useState(false);
   const [closeShiftModal, setCloseShiftModal] = useState(false);
 
-  // Current shift
+
   const { data: shift, refetch: refetchShift } = useQuery({
     queryKey: ['current-shift', branchId],
-    queryFn: () => apiFetch('/api/v1/shifts/current').then((r) => r.data).catch(() => null),
+    queryFn: async () => {
+      try {
+        const r = await apiFetch('/api/v1/shifts/current');
+        // API returns: { success: true, data: shiftObject } or { success: true, data: null }
+        // Extract the actual shift data, which will be null if no active shift
+        return r.data?.data ?? null;
+      } catch {
+        return null;
+      }
+    },
     refetchInterval: 60_000,
   });
+  // Also add a useEffect to log whenever shift changes
 
   return (
     <div className="p-6 space-y-6 max-w-5xl mx-auto">
@@ -123,7 +132,13 @@ export default function CashierDashboardPage() {
               </div>
             </div>
             <button
-              onClick={() => setCloseShiftModal(true)}
+              onClick={() => {
+                if (!shift?.id) {
+                  toast.error("No active shift found");
+                  return;
+                }
+                setCloseShiftModal(true);
+              }}
               className="flex items-center justify-center gap-2 text-sm text-red-600 dark:text-red-400 hover:text-slate-900 dark:text-white bg-red-900/30 hover:bg-red-600 border border-red-300 dark:border-red-800 hover:border-red-500 rounded-lg px-6 py-3 transition-all font-medium shadow-lg"
             >
               <Square size={16} /> Close Shift
@@ -131,7 +146,7 @@ export default function CashierDashboardPage() {
           </div>
         ) : (
           <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-100/50 dark:bg-slate-800/50 border border-slate-300 dark:border-slate-700 rounded-xl p-4">
-             <div className="flex items-center gap-3">
+            <div className="flex items-center gap-3">
               <span className="w-3 h-3 rounded-full bg-slate-600 flex-shrink-0" />
               <div>
                 <div className="text-slate-600 dark:text-slate-300 font-bold text-lg">No Active Shift</div>
@@ -185,7 +200,7 @@ export default function CashierDashboardPage() {
           onOpened={() => { refetchShift(); qc.invalidateQueries({ queryKey: ['current-shift'] }); }}
         />
       )}
-      {closeShiftModal && shift && (
+      {closeShiftModal && shift?.id && (
         <CloseShiftModal
           shiftId={shift.id}
           onClose={() => setCloseShiftModal(false)}
