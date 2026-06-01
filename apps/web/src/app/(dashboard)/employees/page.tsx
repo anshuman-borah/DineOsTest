@@ -174,7 +174,7 @@ export default function EmployeesPage() {
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Employees</h1>
           <p className="text-sm text-slate-900 dark:text-slate-400">{filteredUsers.length} active staff members</p>
         </div>
-        <button onClick={() => { setEditUser(null); setDepartment('restaurant'); setForm({ firstName: '', lastName: '', email: '', phone: '', role: 'cashier', password: '', pin: '', employeeCode: '', branchId: '' }); setShowForm(true); }} className="btn-primary"><Plus size={14} /> Add Employee</button>
+        <button onClick={() => { setEditUser(null); setDepartment('restaurant'); setForm({ firstName: '', lastName: '', email: '', phone: '', role: 'cashier', password: '', pin: '', employeeCode: '', branchId: branchId || '' }); setShowForm(true); }} className="btn-primary"><Plus size={14} /> Add Employee</button>
       </div>
 
       <div className="card p-0 overflow-hidden">
@@ -246,7 +246,7 @@ export default function EmployeesPage() {
                       setEditUser(u);
                       const dept = detectDepartment(u.role);
                       setDepartment(dept);
-                      setForm({ firstName: u.firstName, lastName: u.lastName || '', email: u.email || '', phone: u.phone || '', role: u.role, password: '', pin: '', employeeCode: u.employeeCode || '', branchId: u.branchId || '' });
+                      setForm({ firstName: u.firstName, lastName: u.lastName || '', email: u.email || '', phone: u.phone || '', role: u.role, password: '', pin: '', employeeCode: u.employeeCode || '', branchId: u.branchId || branchId || '' });
                       setShowForm(true);
                     }} className="btn-ghost p-1.5"><Edit2 size={13} /></button>
 
@@ -328,18 +328,18 @@ export default function EmployeesPage() {
                 </select>
               </div>
               <div><label className="label">Employee Code</label><input className="input" value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} /></div>
-              {user?.role === 'owner' && !branchId && form.role !== 'owner' && (
-                <div>
+              {user?.role === 'owner' && form.role !== 'owner' && (
+                <div className="col-span-2 sm:col-span-1">
                   <label className="label">Assign Branch *</label>
-                  <select className="input" value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
+                  <select className="input" value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })} disabled={!!branchId}>
                     <option value="" disabled>Select a Branch</option>
                     {branches?.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
-                </div>
-              )}
-              {user?.role === 'owner' && branchId && form.role !== 'owner' && (
-                <div className="col-span-2 mt-2 text-xs text-amber-600 dark:text-amber-400 bg-amber-100 dark:bg-amber-400/10 p-2.5 rounded-lg border border-amber-300 dark:border-amber-400/20">
-                  This employee will be automatically assigned to your currently selected branch. Switch to "All Branches" to assign to a different location.
+                  {branchId && (
+                    <p className="mt-1 text-xs text-amber-600 dark:text-amber-400">
+                      Assigned to your currently selected branch. Switch to "All Branches" to change.
+                    </p>
+                  )}
                 </div>
               )}
               {form.role === 'owner' && (
