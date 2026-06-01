@@ -101,7 +101,12 @@ export class BillingService {
     }
 
     const totalPaid = dto.payments.reduce((s, p) => s + Number(p.amount), 0);
-    if (totalPaid < effectiveGrandTotal - 0.01) {
+
+    // For offline-synced bills: the cashier already collected the payment at POS.
+    // If the server-recalculated total differs (due to offline items being added),
+    // accept what was collected — DO NOT reject the bill. The payment discrepancy
+    // is an inherent tradeoff of offline-first billing.
+    if (!isOfflineSync && totalPaid < effectiveGrandTotal - 0.01) {
       throw new BadRequestException(
         `Insufficient payment. Expected ₹${effectiveGrandTotal.toFixed(2)}, got ₹${totalPaid.toFixed(2)}`,
       );
@@ -212,14 +217,16 @@ export class BillingService {
   ) {
     const qb = this.billRepo
       .createQueryBuilder('b')
-      .where('b.branch_id = :branchId AND b.tenant_id = :tenantId', { branchId, tenantId })
+      .where('b.tenant_id = :tenantId', { tenantId })
       .orderBy('b.created_at', 'DESC')
       .take(limit)
       .skip((page - 1) * limit);
 
+    // If branchId is provided filter by branch, otherwise show all (global mode)
+    if (branchId) qb.andWhere('b.branch_id = :branchId', { branchId });
+
     if (from)   qb.andWhere('b.created_at >= :from',   { from });
     if (to)     qb.andWhere('b.created_at <= :to',     { to });
-    // ← kept from friend's branch — filters hotel vs pos bills
     if (source) qb.andWhere('b.source = :source',      { source });
 
     const [data, total] = await qb.getManyAndCount();

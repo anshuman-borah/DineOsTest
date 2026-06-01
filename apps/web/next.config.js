@@ -91,10 +91,10 @@ const nextConfig = {
       `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
       // Fonts
       `font-src 'self' https://fonts.gstatic.com`,
-      // Images: self + API static files + S3/CDN
-      `img-src 'self' data: blob: ${apiUrl} https://*.s3.amazonaws.com https://*.s3.*.amazonaws.com https://*.r2.cloudflarestorage.com https://*.digitaloceanspaces.com`,
-      // API + WebSocket connections
-      `connect-src 'self' ${apiUrl} ${socketUrl} wss://${new URL(socketUrl.replace('http','ws')).host} https://o*.ingest.sentry.io`,
+      // Images: self + API static files + S3/CDN (no wildcard in subdomain+path)
+      `img-src 'self' data: blob: ${apiUrl} https://*.s3.amazonaws.com https://*.r2.cloudflarestorage.com https://*.digitaloceanspaces.com`,
+      // API + WebSocket connections — must include both ws: and wss: schemes
+      `connect-src 'self' ${apiUrl} ${socketUrl} ws://${new URL(socketUrl).host} wss://${new URL(socketUrl).host} https://o1.ingest.sentry.io https://o2.ingest.sentry.io https://o4.ingest.sentry.io`,
       // Workers (service worker, next-pwa)
       `worker-src 'self' blob:`,
       // No plugins, no embed
