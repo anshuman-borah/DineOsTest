@@ -38,20 +38,26 @@ function fmt(n: number | string) {
 
 function RoleBadge({ role }: { role?: string }) {
   if (!role) return null;
+
   const colors: Record<string, string> = {
-    owner:     'bg-amber-500/20 text-amber-400',
-    manager:   'bg-blue-500/20 text-blue-400',
-    cashier:   'bg-emerald-500/20 text-emerald-400',
-    waiter:    'bg-purple-500/20 text-purple-400',
-    kitchen:   'bg-orange-500/20 text-orange-400',
-    inventory: 'bg-slate-500/20 text-slate-400',
+    owner:              'bg-amber-500/20 text-amber-400',
+    manager:            'bg-blue-500/20 text-blue-400',
+    restaurant_manager: 'bg-blue-500/20 text-blue-400',
+    cashier:            'bg-emerald-500/20 text-emerald-400',
+    waiter:             'bg-purple-500/20 text-purple-400',
+    kitchen:            'bg-orange-500/20 text-orange-400',
+    inventory:          'bg-slate-500/20 text-slate-400',
   };
+
+  // Format: restaurant_manager → Restaurant Manager
+  const displayName = role.replace(/_/g, ' ');
+
   return (
     <span className={cn(
       'text-[10px] px-1.5 py-0.5 rounded-full font-medium capitalize',
       colors[role] || 'bg-slate-500/20 text-slate-400',
     )}>
-      {role}
+      {displayName}
     </span>
   );
 }
