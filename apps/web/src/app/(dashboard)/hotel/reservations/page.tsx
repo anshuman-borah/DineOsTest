@@ -772,7 +772,12 @@ export default function ReservationsPage() {
               {reservations.map((r) => (
                 <tr key={r.id} className="hover:bg-slate-50 dark:bg-slate-800/30 transition-colors">
                   <td className="px-4 py-3">
-                    <div className="text-slate-700 dark:text-slate-200 font-medium">{r.primaryGuest?.name}</div>
+                    <div className="flex items-center gap-2">
+                      <div className="text-slate-700 dark:text-slate-200 font-medium">{r.primaryGuest?.name}</div>
+                      {r.source === 'ota' && (
+                        <span className="text-[9px] px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-400 font-semibold uppercase tracking-wider" title="Online Travel Agency (e.g. MakeMyTrip)">OTA</span>
+                      )}
+                    </div>
                     <div className="text-slate-900 dark:text-slate-500">{r.primaryGuest?.phone}</div>
                   </td>
                   <td className="px-4 py-3">
