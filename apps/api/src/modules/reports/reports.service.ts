@@ -830,7 +830,7 @@ export class ReportsService {
 
   // ── Branch Summary (Branch Manager Dashboard) ───────────────────────────────
 
-  async getBranchSummary(branchId: string, tenantId: string, from?: string, to?: string) {
+  async getBranchSummary(branchId: string | null, tenantId: string, from?: string, to?: string) {
     const today = new Date().toISOString().slice(0, 10);
     const rangeFrom = from || today;
     const rangeTo = to || today;
@@ -840,6 +840,9 @@ export class ReportsService {
     const weekAgo = new Date(Date.now() - 7 * 86_400_000).toISOString().slice(0, 10);
     const { start: weekS, end: weekE } = this.toDateRange(weekAgo, today);
     const { start: dayStart, end: dayEnd } = this.toDateRange(today, today);
+
+    // Use null-safe branch filter so owners in global mode (branchId=null) get aggregate data
+    const bid = branchId || null;
 
     const [
       revenueToday, revenueMonth, revenueWeek,
@@ -857,43 +860,43 @@ export class ReportsService {
       // Total revenue for selected range (POS + Hotel)
       this.db.query(
         `SELECT COALESCE(SUM(grand_total),0) AS revenue, COUNT(*)::int AS bills
-       FROM bills WHERE branch_id=$1 AND tenant_id=$2
+       FROM bills WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2
        AND status NOT IN ('void','refunded') AND created_at BETWEEN $3 AND $4`,
-        [branchId, tenantId, rangeStart, rangeEnd],
+        [bid, tenantId, rangeStart, rangeEnd],
       ),
 
       // Monthly revenue
       this.db.query(
         `SELECT COALESCE(SUM(grand_total),0) AS revenue
-       FROM bills WHERE branch_id=$1 AND tenant_id=$2
+       FROM bills WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2
        AND status NOT IN ('void','refunded') AND created_at BETWEEN $3 AND $4`,
-        [branchId, tenantId, monthS, monthE],
+        [bid, tenantId, monthS, monthE],
       ),
 
       // 7-day revenue
       this.db.query(
         `SELECT COALESCE(SUM(grand_total),0) AS revenue
-       FROM bills WHERE branch_id=$1 AND tenant_id=$2
+       FROM bills WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2
        AND status NOT IN ('void','refunded') AND created_at BETWEEN $3 AND $4`,
-        [branchId, tenantId, weekS, weekE],
+        [bid, tenantId, weekS, weekE],
       ),
 
       // Restaurant revenue for selected range
       this.db.query(
         `SELECT COALESCE(SUM(grand_total),0) AS revenue, COUNT(*)::int AS bills
-       FROM bills WHERE branch_id=$1 AND tenant_id=$2
+       FROM bills WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2
        AND (source='pos' OR source IS NULL)
        AND status NOT IN ('void','refunded') AND created_at BETWEEN $3 AND $4`,
-        [branchId, tenantId, rangeStart, rangeEnd],
+        [bid, tenantId, rangeStart, rangeEnd],
       ),
 
       // Hotel revenue for selected range
       this.db.query(
         `SELECT COALESCE(SUM(grand_total),0) AS revenue, COUNT(*)::int AS bills
-       FROM bills WHERE branch_id=$1 AND tenant_id=$2
+       FROM bills WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2
        AND source='hotel'
        AND status NOT IN ('void','refunded') AND created_at BETWEEN $3 AND $4`,
-        [branchId, tenantId, rangeStart, rangeEnd],
+        [bid, tenantId, rangeStart, rangeEnd],
       ),
 
       // Restaurant: orders for selected range
@@ -903,31 +906,31 @@ export class ReportsService {
          COUNT(*) FILTER (WHERE status='billed')::int       AS billed_orders,
          COUNT(*) FILTER (WHERE status NOT IN ('billed','cancelled'))::int AS pending_orders,
          COALESCE(AVG(grand_total) FILTER (WHERE status='billed'), 0) AS avg_order_value
-       FROM orders WHERE branch_id=$1 AND tenant_id=$2 AND created_at BETWEEN $3 AND $4`,
-        [branchId, tenantId, rangeStart, rangeEnd],
+       FROM orders WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2 AND created_at BETWEEN $3 AND $4`,
+        [bid, tenantId, rangeStart, rangeEnd],
       ),
 
       // Bills for selected range
       this.db.query(
         `SELECT COUNT(*)::int AS bills
-       FROM bills WHERE branch_id=$1 AND tenant_id=$2
+       FROM bills WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2
        AND created_at BETWEEN $3 AND $4`,
-        [branchId, tenantId, rangeStart, rangeEnd],
+        [bid, tenantId, rangeStart, rangeEnd],
       ),
 
       // Open shifts
       this.db.query(
         `SELECT COUNT(*)::int AS count FROM shifts
-       WHERE branch_id=$1 AND tenant_id=$2 AND status='open'`,
-        [branchId, tenantId],
+       WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2 AND status='open'`,
+        [bid, tenantId],
       ),
 
       // Low stock alerts
       this.db.query(
         `SELECT COUNT(*)::int AS count FROM inventory_items
-       WHERE (branch_id=$1 OR branch_id IS NULL) AND tenant_id=$2
+       WHERE ($1::uuid IS NULL OR branch_id=$1 OR branch_id IS NULL) AND tenant_id=$2
        AND current_stock <= min_stock_level AND is_active=true`,
-        [branchId, tenantId],
+        [bid, tenantId],
       ),
 
       // Hotel: reservations today, check-ins, check-outs, occupancy
@@ -937,38 +940,38 @@ export class ReportsService {
          COUNT(*) FILTER (WHERE check_in_date=$3 AND status NOT IN ('cancelled','no_show'))::int  AS checkins_today,
          COUNT(*) FILTER (WHERE check_out_date=$3 AND status NOT IN ('cancelled','no_show'))::int AS checkouts_today,
          COUNT(*) FILTER (WHERE status='checked_in')::int                                          AS in_house,
-         (SELECT COUNT(*)::int FROM hotel_rooms WHERE branch_id=$1 AND tenant_id=$2 AND is_active=true)                     AS total_rooms,
-         (SELECT COUNT(*) FILTER (WHERE status='available')::int FROM hotel_rooms WHERE branch_id=$1 AND tenant_id=$2 AND is_active=true) AS available_rooms
-       FROM hotel_reservations WHERE branch_id=$1 AND tenant_id=$2`,
-        [branchId, tenantId, today],
+         (SELECT COUNT(*)::int FROM hotel_rooms WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2 AND is_active=true)                     AS total_rooms,
+         (SELECT COUNT(*) FILTER (WHERE status='available')::int FROM hotel_rooms WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2 AND is_active=true) AS available_rooms
+       FROM hotel_reservations WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2`,
+        [bid, tenantId, today],
       ),
 
-      // ✅ CORRECTED: Housekeeping tasks pending
+      // Housekeeping tasks pending
       this.db.query(
         `SELECT COUNT(*)::int AS pending
        FROM hotel_housekeeping_tasks
-       WHERE branch_id=$1
+       WHERE ($1::uuid IS NULL OR branch_id=$1)
          AND tenant_id=$2
          AND status = 'pending'
          AND scheduled_for = $3`,
-        [branchId, tenantId, today],
+        [bid, tenantId, today],
       ),
 
       // Staff counts by role
       this.db.query(
         `SELECT role, COUNT(*)::int AS count
-       FROM users WHERE branch_id=$1 AND tenant_id=$2 AND is_active=true
+       FROM users WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2 AND is_active=true
        GROUP BY role`,
-        [branchId, tenantId],
+        [bid, tenantId],
       ),
 
       // Payment breakdown for selected range
       this.db.query(
         `SELECT method, COALESCE(SUM(amount),0) AS total, COUNT(*)::int AS txns
-       FROM payments WHERE branch_id=$1 AND tenant_id=$2
+       FROM payments WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2
        AND status='success' AND created_at BETWEEN $3 AND $4
        GROUP BY method ORDER BY total DESC`,
-        [branchId, tenantId, rangeStart, rangeEnd],
+        [bid, tenantId, rangeStart, rangeEnd],
       ),
 
       // Revenue chart for selected range
@@ -978,12 +981,12 @@ export class ReportsService {
          COALESCE(SUM(grand_total) FILTER (WHERE source='pos' OR source IS NULL), 0) AS pos,
          COALESCE(SUM(grand_total) FILTER (WHERE source='hotel'), 0)                 AS hotel,
          COALESCE(SUM(grand_total), 0)                                               AS total
-       FROM bills WHERE branch_id=$1 AND tenant_id=$2
+       FROM bills WHERE ($1::uuid IS NULL OR branch_id=$1) AND tenant_id=$2
        AND status NOT IN ('void','refunded')
        AND created_at BETWEEN $3 AND $4
        GROUP BY date_trunc('day', created_at AT TIME ZONE 'Asia/Kolkata')
        ORDER BY date_trunc('day', created_at AT TIME ZONE 'Asia/Kolkata') ASC`,
-        [branchId, tenantId, rangeStart, rangeEnd],
+        [bid, tenantId, rangeStart, rangeEnd],
       ),
     ]);
 

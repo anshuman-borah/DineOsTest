@@ -17,7 +17,7 @@ import { useSubscriptionWall } from '@/hooks/useSubscriptionWall';
 import { SubscriptionWall } from '@/components/ui/SubscriptionWall';
 import { BranchSwitcher } from '@/components/BranchSwitcher';
 
-interface NavItem { href: string; label: string; icon: React.ElementType; exact?: boolean; roles?: string[] }
+interface NavItem { href: string; label: string; icon: React.ElementType; exact?: boolean; roles?: string[]; context?: 'global' | 'branch' }
 interface NavSection { section: string; items: NavItem[] }
 
 const navSections: NavSection[] = [
@@ -25,8 +25,8 @@ const navSections: NavSection[] = [
     section: 'Overview',
     items: [
       { href: '/executive',              label: 'Owner Dashboard',    icon: LayoutDashboard, exact: true, roles: ['owner', 'manager'] },
-      { href: '/owner/branch-performance', label: 'Branch Performance', icon: Building2,      exact: true, roles: ['owner'] },
-      { href: '/branch-summary',         label: 'Branch Summary',     icon: BarChart3,       exact: true, roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager'] },
+      { href: '/owner/branch-performance', label: 'Branch Performance', icon: Building2,      exact: true, roles: ['owner'], context: 'global' },
+      { href: '/branch-summary',         label: 'Branch Summary',     icon: BarChart3,       exact: true, roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager'], context: 'branch' },
     ],
   },
   {
@@ -49,7 +49,7 @@ const navSections: NavSection[] = [
     section: 'Hotel',
     items: [
       { href: '/hotel/dashboard', label: 'Dashboard', icon: BarChart3, roles: ['owner', 'manager', 'hotel_manager'] },
-      { href: '/hotel', label: 'Front Desk', icon: Hotel, exact: true, roles: ['owner', 'manager', 'hotel_manager', 'cashier', 'receptionist'] },
+      { href: '/hotel', label: 'Front Desk', icon: Hotel, exact: true, roles: ['owner', 'manager', 'hotel_manager', 'receptionist'] },
       { href: '/hotel/reservations', label: 'Reservations', icon: CalendarDays, roles: ['owner', 'manager', 'hotel_manager', 'receptionist'] },
       {
         href: '/hotel/rooms',
@@ -59,7 +59,7 @@ const navSections: NavSection[] = [
       },
       { href: '/hotel/housekeeping', label: 'Housekeeping', icon: SprayCan, roles: ['owner', 'manager', 'hotel_manager', 'housekeeping', 'receptionist'] },
 
-      { href: '/hotel/billing', label: 'Billing', icon: Receipt, roles: ['owner', 'manager', 'hotel_manager', 'cashier'] },
+      { href: '/hotel/billing', label: 'Billing', icon: Receipt, roles: ['owner', 'manager', 'hotel_manager'] },
       {
         href: '/hotel/report',
         label: 'Report',
@@ -137,7 +137,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             }
 
             const allowedItems = items.filter(
-              (item) => !item.roles || (user?.role && item.roles.includes(user.role))
+              (item) => {
+                // Role check
+                if (item.roles && !(user?.role && item.roles.includes(user.role))) return false;
+                // Context check: 'global' = only when no branch selected, 'branch' = only when a branch is selected
+                if (item.context === 'global' && branchId) return false;
+                if (item.context === 'branch' && !branchId && user?.role === 'owner') return false;
+                return true;
+              }
             );
 
             if (allowedItems.length === 0) return null;

@@ -77,12 +77,12 @@ function SectionCard({ title, icon: Icon, children }: { title: string; icon: Rea
 // ── page ─────────────────────────────────────────────────────────────────────
 
 export default function BranchSummaryPage() {
-  const { user } = useAuthStore();
+  const { user, branchId } = useAuthStore();
   const [from, setFrom] = useState(monthStart());
   const [to,   setTo]   = useState(today());
 
   const { data: s, isLoading, refetch, isFetching } = useQuery({
-    queryKey: ['branch-summary', from, to],
+    queryKey: ['branch-summary', branchId, from, to],
     queryFn: () =>
       apiFetch(`/api/v1/reports/branch-summary?from=${from}&to=${to}`).then((r) => r.data),
     refetchInterval: 60_000,
@@ -185,7 +185,6 @@ export default function BranchSummaryPage() {
         <div className="flex items-center gap-2 flex-wrap">
           {/* Date range */}
           <div className="flex items-center gap-1.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-lg px-3 py-2">
-            <Calendar size={13} className="text-slate-400" />
             <input type="date" value={from} onChange={(e) => setFrom(e.target.value)}
               className="text-sm bg-transparent text-slate-900 dark:text-white outline-none" />
             <span className="text-slate-400 text-sm">→</span>
