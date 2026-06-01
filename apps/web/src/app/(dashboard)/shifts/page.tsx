@@ -97,10 +97,12 @@ function DenominationCount({
           <div key={d.key} className="flex items-center gap-2">
             <span className="text-xs text-slate-400 w-14">{d.label}</span>
             <input
-              type="number" min={0}
-              value={counts[d.key] || 0}
+              type="number"
+              min={0}
+              value={counts[d.key] || ''}
               onChange={(e) => onChange(d.key, parseInt(e.target.value) || 0)}
               className="input text-center py-1 text-sm w-16"
+              placeholder="0"
             />
             <span className="text-xs text-slate-500 w-20 text-right">
               = {fmt((counts[d.key] || 0) * d.value)}
@@ -117,7 +119,8 @@ export default function ShiftsPage() {
   const qc = useQueryClient();
   const { branchId } = useAuthStore();
 
-  const [openingCash,   setOpeningCash]   = useState<number>(0);
+  // ← Use string for opening cash so input can be truly empty
+  const [openingCash,   setOpeningCash]   = useState<string>('');
   const [closingCounts, setClosingCounts] = useState<Record<string, number>>({});
   const [notes,         setNotes]         = useState('');
   const [showOpen,      setShowOpen]      = useState(false);
@@ -139,22 +142,23 @@ export default function ShiftsPage() {
     enabled:  !!branchId,
   });
 
-  const closingTotal = denomTotal(closingCounts);
-  const expectedCash = activeShift
+  const openingCashNum = parseFloat(openingCash) || 0;
+  const closingTotal   = denomTotal(closingCounts);
+  const expectedCash   = activeShift
     ? Number(activeShift.openingCash || 0) + Number(activeShift.cashSales || 0)
     : 0;
   const difference = closingTotal - expectedCash;
 
   // ── Mutations ──────────────────────────────────────────────────────────────
   const openMutation = useMutation({
-    mutationFn: () => apiPost('/api/v1/shifts/open', { openingCash }),
+    mutationFn: () => apiPost('/api/v1/shifts/open', { openingCash: openingCashNum }),
     onSuccess: () => {
       toast.success('Shift opened!');
       qc.invalidateQueries({ queryKey: ['activeShift'] });
       qc.invalidateQueries({ queryKey: ['shifts'] });
       qc.invalidateQueries({ queryKey: ['current-shift'] });
       setShowOpen(false);
-      setOpeningCash(0);
+      setOpeningCash('');
     },
     onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to open shift'),
   });
@@ -297,17 +301,12 @@ export default function ShiftsPage() {
                       onClick={() => setExpandedShift(isExpand ? null : s.id)}
                     >
                       <td className="td font-medium text-amber-400">{s.shiftNumber}</td>
-
-                      {/* Opened By — name + role */}
                       <td className="td">
                         <UserCell user={s.openedByUser} fallbackId={s.openedBy} />
                       </td>
-
-                      {/* Closed By — name + role */}
                       <td className="td">
                         <UserCell user={s.closedByUser} fallbackId={s.closedBy} />
                       </td>
-
                       <td className="td text-slate-400 text-xs">
                         {dayjs(s.openedAt).format('D MMM, h:mm A')}
                       </td>
@@ -334,7 +333,6 @@ export default function ShiftsPage() {
                       </td>
                     </tr>
 
-                    {/* Expanded row */}
                     {isExpand && (
                       <tr key={`${s.id}-exp`} className="bg-slate-800/30">
                         <td colSpan={11} className="px-6 py-4">
@@ -411,12 +409,15 @@ export default function ShiftsPage() {
 
             <div className="space-y-2">
               <label className="label">Opening Cash Amount (₹)</label>
+              {/* ← value is string now so input can be truly empty */}
               <input
-                type="number" min="0" step="100"
+                type="number"
+                min="0"
+                step="100"
                 value={openingCash}
-                onChange={(e) => setOpeningCash(Number(e.target.value))}
+                onChange={(e) => setOpeningCash(e.target.value)}
                 className="input w-full text-2xl font-bold h-14"
-                placeholder="0"
+                placeholder="Enter amount"
                 autoFocus
               />
               <p className="text-xs text-slate-500">
@@ -424,14 +425,15 @@ export default function ShiftsPage() {
               </p>
             </div>
 
+            {/* Quick amounts */}
             <div className="flex gap-2 flex-wrap">
               {[0, 500, 1000, 2000, 5000].map((v) => (
                 <button
                   key={v}
-                  onClick={() => setOpeningCash(v)}
+                  onClick={() => setOpeningCash(v === 0 ? '0' : String(v))}
                   className={cn(
                     'text-xs px-3 py-1.5 rounded-lg border transition-all',
-                    openingCash === v
+                    openingCashNum === v
                       ? 'border-amber-500 bg-amber-500/10 text-amber-400'
                       : 'border-slate-700 text-slate-400 hover:border-slate-500',
                   )}
@@ -442,7 +444,10 @@ export default function ShiftsPage() {
             </div>
 
             <div className="flex gap-3 pt-2">
-              <button onClick={() => setShowOpen(false)} className="btn-secondary flex-1">
+              <button
+                onClick={() => { setShowOpen(false); setOpeningCash(''); }}
+                className="btn-secondary flex-1"
+              >
                 Cancel
               </button>
               <button
@@ -450,7 +455,9 @@ export default function ShiftsPage() {
                 disabled={openMutation.isPending}
                 className="btn-primary flex-1"
               >
-                {openMutation.isPending ? 'Opening...' : `Open Shift — ${fmt(openingCash)}`}
+                {openMutation.isPending
+                  ? 'Opening...'
+                  : `Open Shift — ${fmt(openingCashNum)}`}
               </button>
             </div>
           </div>
