@@ -18,6 +18,7 @@ interface RoomType {
     maxOccupancy: number;
     amenities: string[];
     totalRooms: number;
+    channelManagerId: string | null;
 }
 
 interface Room {
@@ -167,6 +168,7 @@ function RoomTypeModal({
         baseRate: roomType?.baseRate ?? 0,
         maxOccupancy: roomType?.maxOccupancy ?? 2,
         amenities: (roomType?.amenities ?? []).join(', '),
+        channelManagerId: roomType?.channelManagerId ?? '',
     });
 
     const set = (k: string, v: any) => setForm((p) => ({ ...p, [k]: v }));
@@ -223,6 +225,12 @@ function RoomTypeModal({
                 <div className="space-y-1">
                     <label className="text-xs text-slate-900 dark:text-slate-400">Amenities (comma-separated)</label>
                     <input value={form.amenities} onChange={(e) => set('amenities', e.target.value)} className="input-field text-sm w-full" placeholder="AC, WiFi, TV, Mini-bar" />
+                </div>
+
+                <div className="space-y-1">
+                    <label className="text-xs text-slate-900 dark:text-slate-400">Channel Manager ID (Optional)</label>
+                    <input value={form.channelManagerId} onChange={(e) => set('channelManagerId', e.target.value)} className="input-field text-sm font-mono w-full" placeholder="e.g. OTA_DELUXE_ROOM" />
+                    <p className="text-[10px] text-slate-500">Provided by your Channel Manager to sync bookings.</p>
                 </div>
 
                 <div className="flex gap-2 pt-1">

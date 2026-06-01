@@ -6,7 +6,7 @@ import toast from 'react-hot-toast';
 import {
   Building2, FileText, CreditCard, Printer, UploadCloud,
   Image, X, Bell, CheckCircle2, AlertTriangle, Loader2,
-  Monitor, Trash2, Zap, Eye, EyeOff, ExternalLink, Unlink,
+  Monitor, Trash2, Zap, Eye, EyeOff, ExternalLink, Unlink, Link,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { usePrinterSettings } from '@/hooks/usePrinterSettings';
@@ -44,6 +44,7 @@ const TABS = [
   { id: 'gst',           label: 'GST & Tax',       icon: FileText,       roles: ['owner'] },
   { id: 'subscription',  label: 'Subscription',    icon: CreditCard,     roles: ['owner'] },
   { id: 'payments',      label: 'Payments',        icon: Zap,            roles: ['owner'] },
+  { id: 'integrations',  label: 'Integrations',    icon: Link,           roles: ['owner', 'hotel_manager'] },
   { id: 'printer',       label: 'Printer',         icon: Printer,        roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager', 'cashier', 'waiter', 'kitchen', 'receptionist'] },
   { id: 'notifications', label: 'Notifications',   icon: Bell,           roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager'] },
   { id: 'security',      label: 'Security',        icon: Monitor,        roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager', 'cashier', 'waiter', 'kitchen', 'receptionist', 'inventory', 'housekeeping'] },
@@ -549,6 +550,9 @@ export default function SettingsPage() {
         {/* ── Payments / Razorpay ───────────────────────────────────────────── */}
         {tab === 'payments' && <PaymentsTab />}
 
+        {/* ── Integrations ─────────────────────────────────────────────────── */}
+        {tab === 'integrations' && <IntegrationsTab tenantId={form.id} userBranchId={user?.branchId} />}
+
         {/* ── Security / Sessions ──────────────────────────────────────────── */}
         {tab === 'security' && <SecurityTab />}
       </div>
@@ -798,20 +802,16 @@ function PaymentsTab() {
             </button>
           </div>
           <p className="text-[11px] text-slate-600">
-            Your secret is verified and stored encrypted. It is never returned in API responses.
+            For security, secrets are stored encrypted. Re-enter to update.
           </p>
         </div>
 
         <button
           onClick={() => save.mutate()}
-          disabled={save.isPending || !keyId.trim() || !keySecret.trim()}
-          className="btn-primary w-full flex items-center justify-center gap-2 disabled:opacity-40"
+          disabled={save.isPending || !keyId || !keySecret}
+          className="btn-primary w-full"
         >
-          {save.isPending ? (
-            <><Loader2 size={14} className="animate-spin" /> Verifying with Razorpay…</>
-          ) : (
-            <><Zap size={14} /> {isConnected ? 'Update & Re-verify' : 'Save & Activate'}</>
-          )}
+          {save.isPending ? 'Verifying…' : isConnected ? 'Update Razorpay Keys' : 'Connect Razorpay'}
         </button>
       </div>
 
@@ -826,6 +826,88 @@ function PaymentsTab() {
         <div className="pt-1 border-t border-slate-300 dark:border-slate-700/60">
           Use <span className="font-mono text-yellow-400">rzp_test_</span> keys while testing — switch to <span className="font-mono text-emerald-600 dark:text-emerald-400">rzp_live_</span> when ready to go live.
         </div>
+      </div>
+    </div>
+  );
+}
+
+/* ─── Integrations Tab ─────────────────────────────────────────────────────── */
+export function IntegrationsTab({ tenantId, userBranchId }: { tenantId: string, userBranchId?: string }) {
+  const [copied, setCopied] = useState(false);
+  const branchId = userBranchId || '[YOUR-BRANCH-ID]';
+  const webhookUrl = `${window.location.origin}/api/v1/hotel/webhooks/channel-manager/${tenantId}/${branchId}`;
+  
+  const handleCopy = () => {
+    navigator.clipboard.writeText(webhookUrl);
+    setCopied(true);
+    toast.success('Webhook URL copied!');
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  return (
+    <div className="max-w-xl space-y-6">
+      <div>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white">Third-Party Integrations</h2>
+        <p className="text-sm text-slate-900 dark:text-slate-400 mt-1">
+          Connect DineOS to external platforms.
+        </p>
+      </div>
+
+      <div className="card space-y-4 border-emerald-500/30 bg-emerald-500/5">
+        <div className="flex items-start gap-4">
+          <div className="w-10 h-10 rounded-xl flex items-center justify-center bg-emerald-500/20 text-emerald-600 dark:text-emerald-400 flex-shrink-0">
+            <Link size={20} />
+          </div>
+          <div>
+            <h3 className="text-sm font-semibold text-slate-900 dark:text-white">Channel Manager (OTA Bookings)</h3>
+            <p className="text-xs text-slate-900 dark:text-slate-400 mt-1">
+              Sync bookings automatically from platforms like MakeMyTrip, Booking.com, and Agoda by providing your Webhook URL to your Channel Manager (e.g. STAAH, SiteMinder).
+            </p>
+          </div>
+        </div>
+
+        <div className="mt-4 pt-4 border-t border-slate-200 dark:border-slate-800/60 space-y-4">
+          <div className="space-y-1">
+            <label className="label">Webhook URL</label>
+            <div className="flex items-center gap-2">
+              <input
+                readOnly
+                value={webhookUrl}
+                className="input font-mono text-[11px] py-2 bg-slate-50 dark:bg-slate-900/50"
+              />
+              <button onClick={handleCopy} className="btn-secondary whitespace-nowrap text-xs">
+                {copied ? <CheckCircle2 size={14} /> : 'Copy'}
+              </button>
+            </div>
+            {!userBranchId && (
+              <p className="text-[10px] text-amber-600 flex items-center gap-1 mt-1">
+                <AlertTriangle size={10} /> Replace [YOUR-BRANCH-ID] with the actual branch ID.
+              </p>
+            )}
+          </div>
+          
+          <div className="space-y-1">
+            <label className="label">API Key / Secret</label>
+            <input
+              readOnly
+              value="test_secret_key"
+              className="input font-mono text-sm py-2 bg-slate-50 dark:bg-slate-900/50"
+            />
+            <p className="text-[10px] text-slate-500 mt-1">
+              Provide this secret key to your Channel Manager to authorize the webhook requests.
+            </p>
+          </div>
+        </div>
+      </div>
+      
+      <div className="bg-blue-50 dark:bg-blue-900/20 border border-blue-200 dark:border-blue-800 rounded-xl p-4">
+        <h4 className="text-sm font-semibold text-blue-900 dark:text-blue-400 mb-2">How to map your rooms:</h4>
+        <ol className="list-decimal pl-4 space-y-1 text-xs text-blue-800 dark:text-blue-300">
+          <li>Give the Webhook URL and API Key to your Channel Manager setup team.</li>
+          <li>They will provide you with their internal "Room Type IDs" (e.g., OTA_DELUXE_ROOM).</li>
+          <li>Go to <strong>Hotel &rarr; Rooms</strong>, edit your Room Types, and paste those IDs into the <em>Channel Manager ID</em> field.</li>
+          <li>Bookings will now sync automatically!</li>
+        </ol>
       </div>
     </div>
   );
