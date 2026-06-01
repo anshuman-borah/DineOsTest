@@ -195,14 +195,14 @@ export function BillingModal({
 
       // 6. Create bill
       if (isOffline) {
-        // ── Step 6a: Flush any unsent cart items as a KOT BEFORE the bill ──────────
-        // This handles: user adds item offline and bills directly without a separate KOT.
-        // Without this, the item never reaches the server and the bill misses it.
+        // ── Step 6a: Flush any unsent cart items to the order BEFORE the bill ──
+        // This ensures all items are on the server so the bill is complete.
+        // isOfflineSync: true tells the backend to skip the KDS kitchen notification.
         const unsentItems = cart.filter((i: any) => !i.alreadySent);
         if (unsentItems.length > 0 && oid) {
           await enqueueSync({
             entityType: `orders/${oid}/items`,
-            entityId: '', // entityId='' for add-items; OFFLINE- in entityType gets rewritten by DB-rewrite engine
+            entityId: '',
             operation: 'create',
             payload: {
               items: unsentItems.map((i: any) => ({
@@ -211,12 +211,11 @@ export function BillingModal({
                 notes:       i.notes   || undefined,
                 variationId: i.variationId || undefined,
               })),
-              isOfflineSync: true,
+              isOfflineSync: true,  // ← skips KDS event on backend
             },
             branchId: branchId || '',
             tenantId: tenantId || '',
           });
-          console.log(`[Offline] Queued ${unsentItems.length} unsent item(s) as add-items KOT before bill`);
         }
 
         // Safety check: if oid is still OFFLINE-xxx, verify the order-create is still
