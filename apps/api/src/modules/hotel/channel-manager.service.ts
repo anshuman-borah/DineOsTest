@@ -1,4 +1,4 @@
-import { Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
 import { RoomType } from './entities/room-type.entity';
@@ -123,17 +123,118 @@ export class ChannelManagerService {
   }
 
   /**
+   * Process a cancellation from the Channel Manager webhook
+   */
+  async processCancellation(tenantId: string, branchId: string, bookingRef: string): Promise<void> {
+    this.logger.log(`Processing Channel Manager cancellation: ${bookingRef}`);
+    try {
+      await this.dataSource.transaction(async (em) => {
+        const reservation = await em.findOne(Reservation, {
+          where: { tenantId, branchId, bookingRef },
+          relations: ['room']
+        });
+
+        if (!reservation) {
+          this.logger.warn(`Cancellation received for unknown bookingRef: ${bookingRef}`);
+          return;
+        }
+
+        if (reservation.status === ReservationStatus.CANCELLED) return;
+
+        reservation.status = ReservationStatus.CANCELLED;
+        reservation.notes = (reservation.notes ? reservation.notes + '\n' : '') + 'Cancelled via Channel Manager';
+        
+        await em.save(reservation);
+
+        if (reservation.room && reservation.room.status === RoomStatus.RESERVED) {
+          await em.update(Room, { id: reservation.room.id }, { status: RoomStatus.AVAILABLE });
+        }
+        this.logger.log(`Successfully cancelled reservation ${reservation.id} via OTA`);
+      });
+    } catch (err: any) {
+      this.logger.error(`Error in processCancellation: ${err.message}`, err.stack);
+      throw new BadRequestException(`Cancellation failed: ${err.message}`);
+    }
+  }
+
+  /**
+   * Process a modification from the Channel Manager webhook
+   */
+  async processModification(tenantId: string, branchId: string, payload: IncomingBookingPayload): Promise<Reservation> {
+    this.logger.log(`Processing Channel Manager modification: ${payload.channelManagerId}`);
+    return this.dataSource.transaction(async (em) => {
+      try {
+        const reservation = await em.findOne(Reservation, {
+          where: { tenantId, branchId, bookingRef: payload.channelManagerId }
+        });
+
+        if (!reservation) {
+          throw new NotFoundException(`Cannot modify unknown bookingRef: ${payload.channelManagerId}`);
+        }
+
+        const checkIn = new Date(payload.checkInDate);
+        const checkOut = new Date(payload.checkOutDate);
+        const msPerDay = 86_400_000;
+        const numNights = Math.max(1, Math.round((checkOut.getTime() - checkIn.getTime()) / msPerDay));
+        
+        const ratePerNight = payload.totalAmount / numNights;
+        const taxRate = 0.12; 
+        const subtotal = payload.totalAmount / (1 + taxRate);
+        const taxAmount = payload.totalAmount - subtotal;
+
+        reservation.checkInDate = payload.checkInDate;
+        reservation.checkOutDate = payload.checkOutDate;
+        reservation.numAdults = payload.numAdults;
+        reservation.numChildren = payload.numChildren;
+        reservation.numNights = numNights;
+        reservation.ratePerNight = Math.round(ratePerNight * 100) / 100;
+        reservation.subtotal = Math.round(subtotal * 100) / 100;
+        reservation.taxAmount = Math.round(taxAmount * 100) / 100;
+        reservation.totalAmount = payload.totalAmount;
+        reservation.balanceDue = payload.totalAmount;
+        reservation.notes = (reservation.notes ? reservation.notes + '\n' : '') + 'Modified via Channel Manager';
+
+        const saved = await em.save(reservation);
+        this.logger.log(`Successfully modified reservation ${reservation.id} via OTA`);
+        return saved;
+      } catch (err: any) {
+        this.logger.error(`Error in processModification: ${err.message}`, err.stack);
+        throw new BadRequestException(`Modification failed: ${err.message}`);
+      }
+    });
+  }
+
+  /**
    * Sync inventory BACK to Channel Manager when a booking is created/cancelled natively in DineOS
    */
-  async syncInventoryOutbound(tenantId: string, branchId: string, roomTypeId: string, newAvailableCount: number) {
-    const roomType = await this.roomTypeRepo.findOne({ where: { id: roomTypeId, tenantId } });
-    if (!roomType || !roomType.channelManagerId) {
-      return; // Not mapped, skip sync
-    }
+  async syncInventoryOutbound(tenantId: string, branchId: string, roomTypeId: string) {
+    try {
+      const roomType = await this.roomTypeRepo.findOne({ where: { id: roomTypeId, tenantId } });
+      if (!roomType || !roomType.channelManagerId) {
+        return; // Not mapped, skip sync
+      }
 
-    this.logger.log(`Syncing inventory out to Channel Manager. RoomTypeCMId: ${roomType.channelManagerId}, Available: ${newAvailableCount}`);
-    
-    // In production, this would make an HTTP PATCH request to STAAH/SiteMinder API
-    // e.g. await axios.patch('https://api.siteminder.com/v1/inventory', { roomId: roomType.channelManagerId, count: newAvailableCount });
+      // Calculate newly available inventory for this room type
+      const availableRooms = await this.roomRepo.count({
+        where: { tenantId, branchId, roomType: { id: roomTypeId }, status: RoomStatus.AVAILABLE }
+      });
+
+      this.logger.log(`[OUTBOUND SYNC] Pushing inventory to OTA. CM ID: ${roomType.channelManagerId}, Available: ${availableRooms}`);
+      
+      // In production, this makes an HTTP PATCH request to STAAH/SiteMinder API
+      // Example implementation:
+      /*
+      await fetch('https://api.siteminder.com/v1/inventory', {
+        method: 'PATCH',
+        headers: { 
+          'Authorization': `Bearer YOUR_OTA_TOKEN`,
+          'Content-Type': 'application/json' 
+        },
+        body: JSON.stringify({ roomId: roomType.channelManagerId, count: availableRooms })
+      });
+      */
+    } catch (err: any) {
+      this.logger.error(`Failed to push inventory to OTA: ${err.message}`);
+    }
   }
 }

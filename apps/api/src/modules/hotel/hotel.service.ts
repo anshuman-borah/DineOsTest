@@ -29,6 +29,8 @@ import {
   GstType,
 } from "../billing/entities/bill.entity";
 import { Payment, PaymentMethod } from "../billing/entities/payment.entity";
+import { ChannelManagerService } from "./channel-manager.service";
+import { forwardRef, Inject } from "@nestjs/common";
 
 // ─── DTOs ─────────────────────────────────────────────────────────────────────
 
@@ -118,6 +120,7 @@ export class HotelService {
     @InjectRepository(Bill) private readonly billRepo: Repository<Bill>,
     @InjectRepository(Payment)
     private readonly paymentRepo: Repository<Payment>,
+    @Inject(forwardRef(() => ChannelManagerService)) private readonly cmService: ChannelManagerService,
     private readonly dataSource: DataSource,
   ) { }
 
@@ -367,7 +370,9 @@ export class HotelService {
     dto: CreateReservationDto,
     userId?: string,
   ) {
-    return this.dataSource.transaction(async (em) => {
+    let bookedRoomTypeId: string | undefined;
+
+    const result = await this.dataSource.transaction(async (em) => {
       // 1. Resolve or create guest
       let guestId = dto.primaryGuestId;
       if (!guestId && dto.guest) {
@@ -598,7 +603,10 @@ export class HotelService {
     tenantId: string,
     reason: string,
   ): Promise<Reservation> {
-    const r = await this.reservationRepo.findOne({ where: { id, tenantId } });
+    const r = await this.reservationRepo.findOne({ 
+      where: { id, tenantId },
+      relations: ["room", "room.roomType"]
+    });
     if (!r) throw new NotFoundException("Reservation not found");
     if (
       [ReservationStatus.CHECKED_OUT, ReservationStatus.CANCELLED].includes(
@@ -627,6 +635,10 @@ export class HotelService {
         );
       }
     });
+
+    if (r.room?.roomType?.id && r.branchId) {
+      this.cmService.syncInventoryOutbound(tenantId, r.branchId, r.room.roomType.id).catch((err) => console.error(err));
+    }
 
     return this.getReservation(id, tenantId);
   }

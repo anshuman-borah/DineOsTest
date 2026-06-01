@@ -74,7 +74,7 @@ const navSections: NavSection[] = [
       { href: '/employees', label: 'Employees', icon: Users, roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager'] },
       { href: '/branches', label: 'Branches', icon: Building2, roles: ['owner'] },
       { href: '/audit', label: 'Audit Log', icon: Shield, roles: ['owner'] },
-      { href: '/settings', label: 'Settings', icon: Settings, roles: ['owner'], context: 'branch' },
+      { href: '/settings', label: 'Settings', icon: Settings, roles: ['owner'] },
     ],
   },
 ];

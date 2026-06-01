@@ -44,8 +44,8 @@ const TABS = [
   { id: 'gst',           label: 'GST & Tax',       icon: FileText,       roles: ['owner'] },
   { id: 'subscription',  label: 'Subscription',    icon: CreditCard,     roles: ['owner'] },
   { id: 'payments',      label: 'Payments',        icon: Zap,            roles: ['owner'] },
-  { id: 'integrations',  label: 'Integrations',    icon: Link,           roles: ['owner', 'hotel_manager'] },
-  { id: 'printer',       label: 'Printer',         icon: Printer,        roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager', 'cashier', 'waiter', 'kitchen', 'receptionist'] },
+  { id: 'integrations',  label: 'Integrations',    icon: Link,           roles: ['owner', 'hotel_manager'], context: 'branch' },
+  { id: 'printer',       label: 'Printer',         icon: Printer,        roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager', 'cashier', 'waiter', 'kitchen', 'receptionist'], context: 'branch' },
   { id: 'notifications', label: 'Notifications',   icon: Bell,           roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager'] },
   { id: 'security',      label: 'Security',        icon: Monitor,        roles: ['owner', 'manager', 'restaurant_manager', 'hotel_manager', 'cashier', 'waiter', 'kitchen', 'receptionist', 'inventory', 'housekeeping'] },
 ];
@@ -53,10 +53,18 @@ const TABS = [
 export default function SettingsPage() {
   const qc = useQueryClient();
   const user = useAuthStore((s) => s.user);
+  const branchId = useAuthStore((s) => s.branchId);
   const role = user?.role || 'waiter';
-  const allowedTabs = TABS.filter((t) => !t.roles || t.roles.includes(role));
+  const allowedTabs = TABS.filter((t) => (!t.roles || t.roles.includes(role)) && !(t.context === 'branch' && !branchId));
 
   const [tab, setTab]               = useState(allowedTabs[0]?.id || 'security');
+  
+  useEffect(() => {
+    if (!allowedTabs.find(t => t.id === tab)) {
+      setTab(allowedTabs[0]?.id || 'security');
+    }
+  }, [allowedTabs, tab]);
+
   const [form, setForm]             = useState<any>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
