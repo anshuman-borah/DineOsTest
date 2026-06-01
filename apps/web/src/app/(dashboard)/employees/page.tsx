@@ -330,9 +330,9 @@ export default function EmployeesPage() {
               <div><label className="label">Employee Code</label><input className="input" value={form.employeeCode} onChange={(e) => setForm({ ...form, employeeCode: e.target.value })} /></div>
               {user?.role === 'owner' && !branchId && form.role !== 'owner' && (
                 <div>
-                  <label className="label">Assign Branch</label>
+                  <label className="label">Assign Branch *</label>
                   <select className="input" value={form.branchId} onChange={(e) => setForm({ ...form, branchId: e.target.value })}>
-                    <option value="">Select Branch (Global Mode)</option>
+                    <option value="" disabled>Select a Branch</option>
                     {branches?.map((b: any) => <option key={b.id} value={b.id}>{b.name}</option>)}
                   </select>
                 </div>
@@ -358,6 +358,13 @@ export default function EmployeesPage() {
                 if (editUser && form.password) {
                   if (!window.confirm('Are you sure you want to change this employee\'s password?')) return;
                 }
+                
+                // Block non-owner roles from being Global
+                if (!form.branchId && form.role !== 'owner') {
+                  toast.error(`A specific branch must be assigned for the ${form.role.replace('_', ' ')} role.`);
+                  return;
+                }
+
                 saveMutation.mutate();
               }} disabled={saveMutation.isPending || !form.firstName || (!editUser && !form.password)} className="btn-primary flex-1">
                 {saveMutation.isPending ? 'Saving...' : 'Save Employee'}

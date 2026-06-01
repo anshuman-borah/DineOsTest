@@ -1,5 +1,5 @@
 import { Module, MiddlewareConsumer, NestModule } from '@nestjs/common';
-import { APP_GUARD } from '@nestjs/core';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ThrottlerModule, ThrottlerGuard } from '@nestjs/throttler';
@@ -32,6 +32,7 @@ import { BackupModule } from './modules/backup/backup.module';
 import { HotelModule }  from './modules/hotel/hotel.module';
 import { TenantMiddleware } from './common/middleware/tenant.middleware';
 import { HealthController } from './common/health/health.controller';
+import { AuditInterceptor } from './modules/audit/audit.interceptor';
 
 @Module({
   controllers: [HealthController],
@@ -39,6 +40,7 @@ import { HealthController } from './common/health/health.controller';
     // Apply ThrottlerGuard globally so every route is rate-limited by default.
     // Auth routes override this with stricter per-endpoint @Throttle() decorators.
     { provide: APP_GUARD, useClass: ThrottlerGuard },
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
   ],
   imports: [
     ConfigModule.forRoot({ isGlobal: true, envFilePath: ['../../.env', '.env'] }),

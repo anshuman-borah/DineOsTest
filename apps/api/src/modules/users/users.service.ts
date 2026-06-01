@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
+import { Injectable, NotFoundException, ConflictException, BadRequestException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, In } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
@@ -47,6 +47,10 @@ export class UsersService {
   }
 
   async create(data: Partial<User> & { password: string }) {
+    if (!data.branchId && data.role !== 'owner') {
+      throw new BadRequestException(`A specific branch must be assigned for the ${data.role} role`);
+    }
+
     const existing = await this.repo.findOne({
       where: [
         { tenantId: data.tenantId, email: data.email },
@@ -78,6 +82,12 @@ export class UsersService {
       if (ownerCount <= 1) {
         throw new ConflictException('Cannot change the role of the last active owner');
       }
+    }
+
+    const targetBranchId = data.branchId !== undefined ? data.branchId : user.branchId;
+    const targetRole = data.role || user.role;
+    if (!targetBranchId && targetRole !== 'owner') {
+      throw new BadRequestException(`A specific branch must be assigned for the ${targetRole} role`);
     }
 
     const patch: any = { ...data };

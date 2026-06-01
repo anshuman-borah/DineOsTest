@@ -268,10 +268,33 @@ export default function AuditLogPage() {
           <div className="flex items-center justify-center h-full text-slate-900 dark:text-slate-500 text-sm">
             Failed to load audit logs. Check your permissions.
           </div>
-        ) : isLoading ? (
-          <div className="flex items-center justify-center h-full">
-            <div className="text-slate-900 dark:text-slate-500 text-sm animate-pulse">Loading…</div>
-          </div>
+        ) : isFetching ? (
+          <table className="w-full text-xs">
+            <thead className="sticky top-0 z-10">
+              <tr className="bg-white dark:bg-slate-900 border-b border-slate-200 dark:border-slate-800">
+                <th className="text-left px-4 py-3 font-medium text-slate-900 dark:text-slate-400 w-44">Timestamp</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-900 dark:text-slate-400 w-24">Action</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-900 dark:text-slate-400 w-28">Entity</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-900 dark:text-slate-400">Entity ID</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-900 dark:text-slate-400">User ID</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-900 dark:text-slate-400 w-32">IP Address</th>
+                <th className="text-left px-4 py-3 font-medium text-slate-900 dark:text-slate-400 w-24">Changes</th>
+              </tr>
+            </thead>
+            <tbody className="divide-y divide-slate-200 dark:divide-slate-800/60">
+              {Array.from({ length: 15 }).map((_, i) => (
+                <tr key={i} className="animate-pulse">
+                  <td className="px-4 py-3.5"><div className="h-4 bg-slate-200 dark:bg-slate-800/80 rounded w-24"></div></td>
+                  <td className="px-4 py-3.5"><div className="h-4 bg-slate-200 dark:bg-slate-800/80 rounded w-16"></div></td>
+                  <td className="px-4 py-3.5"><div className="h-4 bg-slate-200 dark:bg-slate-800/80 rounded w-20"></div></td>
+                  <td className="px-4 py-3.5"><div className="h-4 bg-slate-200 dark:bg-slate-800/80 rounded w-32"></div></td>
+                  <td className="px-4 py-3.5"><div className="h-4 bg-slate-200 dark:bg-slate-800/80 rounded w-32"></div></td>
+                  <td className="px-4 py-3.5"><div className="h-4 bg-slate-200 dark:bg-slate-800/80 rounded w-24"></div></td>
+                  <td className="px-4 py-3.5"><div className="h-4 bg-slate-200 dark:bg-slate-800/80 rounded w-12"></div></td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         ) : logs.length === 0 ? (
           <div className="flex flex-col items-center justify-center h-full gap-3 text-slate-600">
             <Shield size={40} />
