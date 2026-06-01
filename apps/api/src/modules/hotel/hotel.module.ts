@@ -11,6 +11,9 @@ import { HousekeepingTask } from './entities/housekeeping-task.entity';
 import { Bill }             from '../billing/entities/bill.entity';
 import { Payment }          from '../billing/entities/payment.entity';
 
+import { ChannelManagerService } from './channel-manager.service';
+import { HotelWebhookController } from './hotel-webhook.controller';
+
 @Module({
   imports: [
     TypeOrmModule.forFeature([
@@ -18,8 +21,8 @@ import { Payment }          from '../billing/entities/payment.entity';
       Bill, Payment
     ]),
   ],
-  providers:   [HotelService],
-  controllers: [HotelController],
+  providers:   [HotelService, ChannelManagerService],
+  controllers: [HotelController, HotelWebhookController],
   exports:     [HotelService],
 })
 export class HotelModule {}

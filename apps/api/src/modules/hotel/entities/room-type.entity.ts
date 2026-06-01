@@ -30,6 +30,10 @@ export class RoomType {
 
   @Column({ name: 'is_active', default: true }) isActive: boolean;
 
+  /** Used to map this room type to a Channel Manager (e.g. STAAH/SiteMinder) room ID */
+  @Column({ name: 'channel_manager_id', length: 100, nullable: true })
+  channelManagerId: string;
+
   @CreateDateColumn({ name: 'created_at' })   createdAt: Date;
   @UpdateDateColumn({ name: 'updated_at' })   updatedAt: Date;
 }
