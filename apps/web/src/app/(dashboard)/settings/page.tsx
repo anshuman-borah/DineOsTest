@@ -119,9 +119,7 @@ export default function SettingsPage() {
     try {
       const formData = new FormData();
       formData.append('file', file);
-      const res = await api.post('/api/v1/storage/upload?folder=logos', formData, {
-        headers: { 'Content-Type': 'multipart/form-data' },
-      });
+      const res = await api.post('/api/v1/storage/upload?folder=logos', formData);
       const url = res.data?.data?.url || res.data?.url;
       if (!url) throw new Error('No URL returned');
       setForm((f: any) => ({ ...f, logoUrl: url }));

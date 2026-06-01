@@ -77,6 +77,7 @@ async function bootstrap() {
   app.use((helmet as any).default({
     contentSecurityPolicy: isProd,       // only enforce CSP in production
     crossOriginEmbedderPolicy: false,    // allow loading external resources (fonts, etc.)
+    crossOriginResourcePolicy: false,    // allow frontend to load static images
   }));
 
   // ─── CORS — locked to APP_URL in production ──────────────────────────────
