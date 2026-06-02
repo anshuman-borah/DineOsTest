@@ -161,6 +161,54 @@ export default function SettingsPage() {
 
   const displayLogoUrl = logoPreviewUrl || form?.logoUrl;
 
+  const [isUpgrading, setIsUpgrading] = useState(false);
+  const handleUpgrade = async (plan: any) => {
+    try {
+      setIsUpgrading(true);
+      const res = await api.post('/api/v1/razorpay/create-order', {
+        planCode: plan.code,
+        frequency: 'monthly',
+      });
+      const order = res.data.data || res.data;
+
+      const options = {
+        key: order.keyId,
+        amount: order.amount,
+        currency: order.currency,
+        name: 'DineOS Subscription',
+        description: `Upgrade to ${plan.name} Plan`,
+        order_id: order.orderId,
+        handler: async function (response: any) {
+          try {
+            await api.post('/api/v1/razorpay/verify-payment', {
+              razorpayOrderId: response.razorpay_order_id,
+              razorpayPaymentId: response.razorpay_payment_id,
+              razorpaySignature: response.razorpay_signature,
+              planCode: plan.code,
+              frequency: 'monthly',
+            });
+            toast.success('Subscription upgraded successfully!');
+            qc.invalidateQueries({ queryKey: ['tenant'] });
+            qc.invalidateQueries({ queryKey: ['tenant-subscription'] });
+          } catch (e: any) {
+            toast.error(e.response?.data?.message || 'Payment verification failed');
+          }
+        },
+        theme: { color: '#f59e0b' },
+      };
+
+      const rzp = new (window as any).Razorpay(options);
+      rzp.on('payment.failed', function (response: any) {
+        toast.error(response.error.description || 'Payment failed');
+      });
+      rzp.open();
+    } catch (e: any) {
+      toast.error(e.response?.data?.message || 'Failed to initialize payment');
+    } finally {
+      setIsUpgrading(false);
+    }
+  };
+
   // Show loading only on the very first load (form is null and tenant hasn't arrived yet)
   if (tenantLoading && !form) {
     return (
@@ -410,8 +458,12 @@ export default function SettingsPage() {
                     </li>
                   </ul>
                   {sub.planId !== plan.id && (
-                    <button className="btn-secondary w-full mt-4 text-xs">
-                      {plan.priceMonthly > (sub.plan?.priceMonthly ?? 0) ? 'Upgrade' : 'Downgrade'}
+                    <button 
+                      className="btn-secondary w-full mt-4 text-xs"
+                      onClick={() => handleUpgrade(plan)}
+                      disabled={isUpgrading}
+                    >
+                      {isUpgrading ? 'Loading...' : (plan.priceMonthly > (sub.plan?.priceMonthly ?? 0) ? 'Upgrade' : 'Downgrade')}
                     </button>
                   )}
                 </div>

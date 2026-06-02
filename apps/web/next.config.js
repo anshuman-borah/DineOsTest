@@ -86,7 +86,7 @@ const nextConfig = {
     const csp = [
       `default-src 'self'`,
       // Scripts: self + Next.js inline runtime (nonce-less build uses unsafe-inline in dev only)
-      isDev ? `script-src 'self' 'unsafe-eval' 'unsafe-inline'` : `script-src 'self'`,
+      isDev ? `script-src 'self' 'unsafe-eval' 'unsafe-inline' https://checkout.razorpay.com` : `script-src 'self' https://checkout.razorpay.com`,
       // Styles: self + inline (Tailwind generates inline styles)
       `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
       // Fonts
@@ -94,7 +94,7 @@ const nextConfig = {
       // Images: self + API static files + S3/CDN (no wildcard in subdomain+path)
       `img-src 'self' data: blob: ${apiUrl} https://*.s3.amazonaws.com https://*.r2.cloudflarestorage.com https://*.digitaloceanspaces.com`,
       // API + WebSocket connections — must include both ws: and wss: schemes
-      `connect-src 'self' ${apiUrl} ${socketUrl} ws://${new URL(socketUrl).host} wss://${new URL(socketUrl).host} https://o1.ingest.sentry.io https://o2.ingest.sentry.io https://o4.ingest.sentry.io`,
+      `connect-src 'self' ${apiUrl} ${socketUrl} ws://${new URL(socketUrl).host} wss://${new URL(socketUrl).host} https://o1.ingest.sentry.io https://o2.ingest.sentry.io https://o4.ingest.sentry.io https://*.razorpay.com`,
       // Workers (service worker, next-pwa)
       `worker-src 'self' blob:`,
       // No plugins, no embed
@@ -103,6 +103,7 @@ const nextConfig = {
       `form-action 'self'`,
       // Prevent clickjacking
       `frame-ancestors 'none'`,
+      `frame-src 'self' https://api.razorpay.com https://checkout.razorpay.com`,
     ].join('; ');
 
     return [

@@ -3,7 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
-import Razorpay from 'razorpay';
+const Razorpay = require('razorpay');
 import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
 import { Plan } from '../subscriptions/entities/plan.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
@@ -19,7 +19,7 @@ export class RazorpayService {
     @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
   ) {}
 
-  private async getClientInfo(): Promise<{ client: Razorpay | null; webhookSecret: string; keyId: string }> {
+  private async getClientInfo(): Promise<{ client: any | null; webhookSecret: string; keyId: string }> {
     const sysTenant = await this.tenantRepo.findOne({ where: { slug: '_system' } });
     const settings = sysTenant?.settings || {};
 
@@ -27,7 +27,7 @@ export class RazorpayService {
     const keySecret = settings.razorpayKeySecret || this.config.get('RAZORPAY_KEY_SECRET', '');
     const webhookSecret = settings.razorpayWebhookSecret || this.config.get('RAZORPAY_WEBHOOK_SECRET', '');
 
-    let client: Razorpay | null = null;
+    let client: any | null = null;
     if (keyId && keySecret && !keyId.includes('xxxxx')) {
       client = new Razorpay({ key_id: keyId, key_secret: keySecret });
     }
@@ -225,5 +225,19 @@ export class RazorpayService {
   private async onSubscriptionHalted(sub: any) {
     this.logger.warn(`Razorpay subscription halted (past due): ${sub.id}`);
     await this.subRepo.update({ razorpaySubId: sub.id }, { status: SubscriptionStatus.PAST_DUE });
+  }
+  async fetchPayments(count: number = 20, skip: number = 0): Promise<any> {
+    const { client } = await this.getClientInfo();
+    if (!client) {
+      throw new BadRequestException('Razorpay is not configured');
+    }
+    
+    try {
+      const response = await client.payments.all({ count, skip });
+      return response;
+    } catch (e: any) {
+      this.logger.error('Failed to fetch payments from Razorpay', e);
+      throw new BadRequestException('Failed to fetch payments from Razorpay');
+    }
   }
 }

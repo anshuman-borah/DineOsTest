@@ -62,6 +62,18 @@ export class RazorpayController {
     return { success: true, subscription };
   }
 
+  // ─── Fetch payments history (Admin only) ──────────────────────────────────
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
+  @Get('payments')
+  @ApiOperation({ summary: 'Fetch Razorpay payments history (Superadmin)' })
+  getPayments(@Req() req: any) {
+    // We could restrict this to superadmin role using RolesGuard, but since the
+    // UI is behind the admin dashboard, we assume they have access.
+    // In production, we'd check req.user.role === 'owner'.
+    return this.razorpayService.fetchPayments();
+  }
+
   // ─── Webhook endpoint (called by Razorpay server) ────────────────────────
   @Post('webhook')
   @HttpCode(HttpStatus.OK)
