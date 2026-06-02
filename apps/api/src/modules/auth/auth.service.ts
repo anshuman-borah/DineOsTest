@@ -88,7 +88,8 @@ export class AuthService {
         trialEndsAt: trialEnd,
       }).catch(() => {});
 
-      return this.generateTokens(user, tenant.id, branch.id);
+      const tokens = await this.generateTokens(user, tenant.id, branch.id);
+      return { ...tokens, user: this.sanitizeUser(user) };
     });
   }
 
