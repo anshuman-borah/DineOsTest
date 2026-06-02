@@ -172,7 +172,7 @@ export default function PlansPage() {
 
   const { data: plans = [], isLoading, refetch } = useQuery<Plan[]>({
     queryKey: ['admin-plans'],
-    queryFn: () => api.get('/api/v1/admin/plans').then(r => r.data),
+    queryFn: () => api.get('/api/v1/admin/plans').then(r => r.data.data || r.data),
     staleTime: 30_000,
   });
 
