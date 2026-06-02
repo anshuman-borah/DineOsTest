@@ -11,16 +11,16 @@ import { ShiftsService } from './shifts.service';
 import { OpenShiftDto, CloseShiftDto } from './dto/shift.dto';
 import { ShiftDepartment } from './entities/shift.entity';
 
-@ApiTags('shifts')
+@ApiTags('hotel-shifts')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
-@Controller({ path: 'shifts', version: '1' })
-export class ShiftsController {
+@Controller({ path: 'hotel-shifts', version: '1' })
+export class HotelShiftsController {
   constructor(private readonly svc: ShiftsService) {}
 
   @Post('open')
-  @Roles('cashier', 'restaurant_manager', 'manager', 'owner')
-  @ApiOperation({ summary: 'Open a new restaurant shift' })
+  @Roles('hotel_manager', 'receptionist', 'manager', 'owner')
+  @ApiOperation({ summary: 'Open a new hotel shift' })
   async openShift(
     @Body() dto: OpenShiftDto,
     @TenantId() tenantId: string,
@@ -33,13 +33,13 @@ export class ShiftsController {
       user.id,
       dto.openingCash,
       dto.denominations,
-      ShiftDepartment.RESTAURANT,
+      ShiftDepartment.HOTEL,
     );
   }
 
   @Post(':id/close')
-  @Roles('cashier', 'restaurant_manager', 'manager', 'owner')
-  @ApiOperation({ summary: 'Close restaurant shift' })
+  @Roles('hotel_manager', 'receptionist', 'manager', 'owner')
+  @ApiOperation({ summary: 'Close hotel shift' })
   async closeShift(
     @Param('id') id: string,
     @Body() dto: CloseShiftDto,
@@ -57,22 +57,22 @@ export class ShiftsController {
   }
 
   @Get('current')
-  @Roles('cashier', 'waiter', 'kitchen', 'inventory', 'restaurant_manager', 'manager', 'owner')
-  @ApiOperation({ summary: 'Get current active restaurant shift' })
+  @Roles('hotel_manager', 'receptionist', 'housekeeping', 'manager', 'owner')
+  @ApiOperation({ summary: 'Get current active hotel shift' })
   getCurrent(@TenantId() tenantId: string, @BranchId() branchId: string) {
-    return this.svc.getActiveShift(branchId, tenantId, ShiftDepartment.RESTAURANT);
+    return this.svc.getActiveShift(branchId, tenantId, ShiftDepartment.HOTEL);
   }
 
   @Get('active')
-  @Roles('cashier', 'waiter', 'kitchen', 'inventory', 'restaurant_manager', 'manager', 'owner')
-  @ApiOperation({ summary: 'Get active restaurant shift' })
+  @Roles('hotel_manager', 'receptionist', 'housekeeping', 'manager', 'owner')
+  @ApiOperation({ summary: 'Get active hotel shift' })
   getActive(@TenantId() tenantId: string, @BranchId() branchId: string) {
-    return this.svc.getActiveShift(branchId, tenantId, ShiftDepartment.RESTAURANT);
+    return this.svc.getActiveShift(branchId, tenantId, ShiftDepartment.HOTEL);
   }
 
   @Get('stats/summary')
-  @Roles('restaurant_manager', 'manager', 'owner')
-  @ApiOperation({ summary: 'Get restaurant shift statistics' })
+  @Roles('hotel_manager', 'manager', 'owner')
+  @ApiOperation({ summary: 'Get hotel shift statistics' })
   @ApiQuery({ name: 'startDate', required: false })
   @ApiQuery({ name: 'endDate',   required: false })
   async getStats(
@@ -86,20 +86,20 @@ export class ShiftsController {
       tenantId,
       startDate ? new Date(startDate) : undefined,
       endDate   ? new Date(endDate)   : undefined,
-      ShiftDepartment.RESTAURANT,
+      ShiftDepartment.HOTEL,
     );
   }
 
   @Get(':id/summary')
-  @Roles('cashier', 'restaurant_manager', 'manager', 'owner')
-  @ApiOperation({ summary: 'Get shift summary' })
+  @Roles('hotel_manager', 'receptionist', 'manager', 'owner')
+  @ApiOperation({ summary: 'Get hotel shift summary' })
   getSummary(@Param('id') id: string, @TenantId() tenantId: string) {
     return this.svc.getShiftSummary(id, tenantId);
   }
 
   @Get()
-  @Roles('restaurant_manager', 'manager', 'owner')
-  @ApiOperation({ summary: 'List all restaurant shifts' })
+  @Roles('hotel_manager', 'manager', 'owner')
+  @ApiOperation({ summary: 'List all hotel shifts' })
   @ApiQuery({ name: 'limit',       required: false })
   @ApiQuery({ name: 'offset',      required: false })
   @ApiQuery({ name: 'status',      required: false })
@@ -122,13 +122,13 @@ export class ShiftsController {
       limit  ? Number(limit)  : 20,
       offset ? Number(offset) : 0,
       { status, startDate, endDate, shiftNumber },
-      ShiftDepartment.RESTAURANT,
+      ShiftDepartment.HOTEL,
     );
   }
 
   @Post(':id/refresh')
-  @Roles('restaurant_manager', 'manager', 'owner')
-  @ApiOperation({ summary: 'Refresh shift calculations' })
+  @Roles('hotel_manager', 'manager', 'owner')
+  @ApiOperation({ summary: 'Refresh hotel shift calculations' })
   async refreshShift(
     @Param('id') id: string,
     @TenantId() tenantId: string,
