@@ -66,6 +66,8 @@ export default function SettingsPage() {
   }, [allowedTabs, tab]);
 
   const [form, setForm]             = useState<any>(null);
+  const [logoFile, setLogoFile]     = useState<File | null>(null);
+  const [logoPreviewUrl, setLogoPreviewUrl] = useState<string | null>(null);
   const [logoUploading, setLogoUploading] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
   const { settings: printer, update: updatePrinter, loaded: printerLoaded } = usePrinterSettings();
@@ -99,38 +101,65 @@ export default function SettingsPage() {
   });
 
   const saveMutation = useMutation({
-    mutationFn: () => apiPut('/api/v1/tenant', form),
+    mutationFn: async () => {
+      let payload = { ...form };
+      if (logoFile) {
+        setLogoUploading(true);
+        try {
+          const formData = new FormData();
+          formData.append('file', logoFile);
+          const res = await api.post('/api/v1/storage/upload?folder=logos', formData);
+          const url = res.data?.data?.url || res.data?.url;
+          if (!url) throw new Error('No URL returned');
+          payload.logoUrl = url;
+        } catch (err: any) {
+          throw new Error(err.response?.data?.message || 'Logo upload failed');
+        } finally {
+          setLogoUploading(false);
+        }
+      }
+      return apiPut('/api/v1/tenant', payload);
+    },
     onSuccess: (res) => {
       toast.success('Settings saved');
-      // Update form with the server response directly — no refetch needed
       const updated = res?.data ?? res;
-      if (updated) setForm(updated);
-      // Update the cache without triggering a refetch
+      if (updated) {
+        setForm(updated);
+        setLogoFile(null);
+        if (logoPreviewUrl) {
+          URL.revokeObjectURL(logoPreviewUrl);
+          setLogoPreviewUrl(null);
+        }
+      }
       qc.setQueryData(['tenant'], updated);
     },
-    onError: () => toast.error('Save failed'),
+    onError: (err: any) => {
+      toast.error(err.message || 'Save failed');
+    },
   });
 
-  const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleLogoUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
     if (file.size > 5 * 1024 * 1024) { toast.error('Image must be under 5 MB'); return; }
-    setLogoUploading(true);
-    try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await api.post('/api/v1/storage/upload?folder=logos', formData);
-      const url = res.data?.data?.url || res.data?.url;
-      if (!url) throw new Error('No URL returned');
-      setForm((f: any) => ({ ...f, logoUrl: url }));
-      toast.success('Logo uploaded — save to apply');
-    } catch (err: any) {
-      toast.error(err.response?.data?.message || 'Upload failed');
-    } finally {
-      setLogoUploading(false);
-      if (logoInputRef.current) logoInputRef.current.value = '';
+    
+    setLogoFile(file);
+    const localUrl = URL.createObjectURL(file);
+    setLogoPreviewUrl(localUrl);
+    toast.success('Logo selected — save to apply');
+    if (logoInputRef.current) logoInputRef.current.value = '';
+  };
+
+  const handleRemoveLogo = () => {
+    setForm((f: any) => ({ ...f, logoUrl: null }));
+    setLogoFile(null);
+    if (logoPreviewUrl) {
+      URL.revokeObjectURL(logoPreviewUrl);
+      setLogoPreviewUrl(null);
     }
   };
+
+  const displayLogoUrl = logoPreviewUrl || form?.logoUrl;
 
   // Show loading only on the very first load (form is null and tenant hasn't arrived yet)
   if (tenantLoading && !form) {
@@ -171,23 +200,24 @@ export default function SettingsPage() {
               <label className="label mb-0">Business Logo</label>
               <div className="flex items-center gap-4">
                 <div className="w-20 h-20 rounded-xl border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center bg-slate-50 dark:bg-slate-800 overflow-hidden flex-shrink-0">
-                  {form.logoUrl
-                    ? <img src={form.logoUrl} alt="Logo" className="w-full h-full object-contain" />
+                  {displayLogoUrl
+                    ? <img src={displayLogoUrl} alt="Logo" className="w-full h-full object-contain" />
                     : <Image size={24} className="text-slate-600" />}
                 </div>
                 <div className="flex-1 space-y-2">
                   <input ref={logoInputRef} type="file" accept="image/jpeg,image/png,image/webp" className="hidden" onChange={handleLogoUpload} />
                   <button
                     onClick={() => logoInputRef.current?.click()}
-                    disabled={logoUploading}
+                    disabled={logoUploading || saveMutation.isPending}
                     className="btn-secondary w-full text-sm"
                   >
                     {logoUploading ? <Loader2 size={14} className="animate-spin" /> : <UploadCloud size={14} />}
                     {logoUploading ? 'Uploading…' : 'Upload Logo'}
                   </button>
-                  {form.logoUrl && (
+                  {displayLogoUrl && (
                     <button
-                      onClick={() => setForm((f: any) => ({ ...f, logoUrl: null }))}
+                      onClick={handleRemoveLogo}
+                      disabled={logoUploading || saveMutation.isPending}
                       className="btn-ghost w-full text-xs text-red-600 dark:text-red-400"
                     >
                       <X size={12} /> Remove Logo
