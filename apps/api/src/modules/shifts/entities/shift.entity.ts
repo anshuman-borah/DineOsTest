@@ -2,14 +2,16 @@ import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, Index, OneToM
 import { ShiftDenomination } from './shift-denomination.entity';
 
 export enum ShiftStatus { OPEN = 'open', CLOSED = 'closed' }
+export enum ShiftDepartment { RESTAURANT = 'restaurant', HOTEL = 'hotel' }
 
 @Entity('shifts')
-@Index(['branchId', 'shiftNumber'], { unique: true })
+@Index(['branchId', 'department', 'shiftNumber'], { unique: true })
 export class Shift {
   @PrimaryGeneratedColumn('uuid') id: string;
   @Column({ name: 'tenant_id' }) tenantId: string;
   @Column({ name: 'branch_id' }) @Index() branchId: string;
   @Column({ name: 'shift_number' }) shiftNumber: string;
+  @Column({ type: 'varchar', length: 20, default: ShiftDepartment.RESTAURANT }) department: ShiftDepartment;
   @Column({ type: 'enum', enum: ShiftStatus, default: ShiftStatus.OPEN }) status: ShiftStatus;
   @Column({ name: 'opened_by' }) openedBy: string;
   @Column({ name: 'closed_by', nullable: true }) closedBy: string;

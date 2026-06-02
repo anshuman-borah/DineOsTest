@@ -1,7 +1,7 @@
 import { Injectable, BadRequestException, NotFoundException } from '@nestjs/common';
 import { InjectRepository, InjectDataSource } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
-import { Shift, ShiftStatus } from './entities/shift.entity';
+import { Shift, ShiftStatus, ShiftDepartment } from './entities/shift.entity';
 import { ShiftDenomination } from './entities/shift-denomination.entity';
 
 export interface DenominationDto {
@@ -27,29 +27,36 @@ export class ShiftsService {
     userId: string,
     openingCash: number,
     denominations?: DenominationDto,
+    department: ShiftDepartment = ShiftDepartment.RESTAURANT,
   ) {
     const existing = await this.shiftRepo.findOne({
-      where: { branchId, tenantId, status: ShiftStatus.OPEN },
+      where: { branchId, tenantId, status: ShiftStatus.OPEN, department },
     });
-    if (existing) throw new BadRequestException('A shift is already open for this branch');
+    if (existing) {
+      const deptLabel = department === ShiftDepartment.HOTEL ? 'hotel' : 'restaurant';
+      throw new BadRequestException(`A ${deptLabel} shift is already open for this branch`);
+    }
+
+    const prefix = department === ShiftDepartment.HOTEL ? 'HSH' : 'SH';
 
     const shiftNumber = await this.db.transaction(async (em) => {
       const [{ lock_key }] = await em.query(
         `SELECT abs(hashtext($1))::bigint AS lock_key`,
-        [`shift_seq:${branchId}`],
+        [`shift_seq:${branchId}:${department}`],
       );
       await em.query(`SELECT pg_advisory_xact_lock($1)`, [lock_key]);
       const [{ count }] = await em.query(
-        `SELECT COUNT(*)::int AS count FROM shifts WHERE branch_id = $1 AND tenant_id = $2`,
-        [branchId, tenantId],
+        `SELECT COUNT(*)::int AS count FROM shifts WHERE branch_id = $1 AND tenant_id = $2 AND department = $3`,
+        [branchId, tenantId, department],
       );
-      return `SH-${String(Number(count) + 1).padStart(4, '0')}`;
+      return `${prefix}-${String(Number(count) + 1).padStart(4, '0')}`;
     });
 
     const shift = this.shiftRepo.create({
       tenantId,
       branchId,
       shiftNumber,
+      department,
       openedBy:    userId,
       openingCash,
       status:      ShiftStatus.OPEN,
@@ -98,9 +105,13 @@ export class ShiftsService {
     return this.getShiftSummary(shift.id, tenantId);
   }
 
-  async getActiveShift(branchId: string, tenantId: string) {
+  async getActiveShift(
+    branchId: string,
+    tenantId: string,
+    department: ShiftDepartment = ShiftDepartment.RESTAURANT,
+  ) {
     const shift = await this.shiftRepo.findOne({
-      where: { branchId, tenantId, status: ShiftStatus.OPEN },
+      where: { branchId, tenantId, status: ShiftStatus.OPEN, department },
       relations: ['denominations'],
     });
     if (!shift) return null;
@@ -145,6 +156,7 @@ export class ShiftsService {
       endDate?: string;
       shiftNumber?: string;
     },
+    department: ShiftDepartment = ShiftDepartment.RESTAURANT,
   ) {
     let sql = `
       SELECT
@@ -160,10 +172,11 @@ export class ShiftsService {
       LEFT JOIN users u2 ON u2.id = s.closed_by::uuid
       WHERE s.branch_id = $1
         AND s.tenant_id = $2
+        AND s.department = $3
     `;
 
-    const params: any[] = [branchId, tenantId];
-    let idx = 3;
+    const params: any[] = [branchId, tenantId, department];
+    let idx = 4;
 
     if (filters?.status) {
       sql += ` AND s.status = $${idx++}`;
@@ -194,10 +207,12 @@ export class ShiftsService {
     tenantId: string,
     startDate?: Date,
     endDate?: Date,
+    department: ShiftDepartment = ShiftDepartment.RESTAURANT,
   ) {
     const query = this.shiftRepo.createQueryBuilder('shift')
       .where('shift.branchId = :branchId', { branchId })
       .andWhere('shift.tenantId = :tenantId', { tenantId })
+      .andWhere('shift.department = :department', { department })
       .andWhere('shift.status = :status', { status: ShiftStatus.CLOSED });
 
     if (startDate) query.andWhere('shift.closedAt >= :startDate', { startDate });
@@ -260,6 +275,7 @@ export class ShiftsService {
       id:            r.id,
       shiftNumber:   r.shift_number,
       status:        r.status,
+      department:    r.department,
       openingCash:   r.opening_cash,
       closingCash:   r.closing_cash,
       expectedCash:  r.expected_cash,
