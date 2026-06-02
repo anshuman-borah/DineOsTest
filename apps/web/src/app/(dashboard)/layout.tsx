@@ -2,7 +2,6 @@
 import { useEffect, useState } from 'react';
 import { useRouter, usePathname } from 'next/navigation';
 import Link from 'next/link';
-import Script from 'next/script';
 import { useTheme } from 'next-themes';
 import { useAuthStore } from '@/store/auth.store';
 import {
@@ -59,7 +58,6 @@ const navSections: NavSection[] = [
         roles: ['owner', 'manager', 'hotel_manager']
       },
       { href: '/hotel/housekeeping', label: 'Housekeeping', icon: SprayCan, roles: ['owner', 'manager', 'hotel_manager', 'housekeeping', 'receptionist'] },
-
       { href: '/hotel/billing', label: 'Billing', icon: Receipt, roles: ['owner', 'manager', 'hotel_manager'] },
       { href: '/hotel/shifts', label: 'Shifts', icon: Clock, roles: ['owner', 'manager', 'hotel_manager', 'receptionist'] },
       {
@@ -112,8 +110,7 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   }
 
   return (
-    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden text-slate-900 dark:text-slate-100">
-      <Script src="https://checkout.razorpay.com/v1/checkout.js" strategy="lazyOnload" />
+    <div className="flex h-screen bg-slate-50 dark:bg-slate-950 overflow-hidden">
       {/* Sidebar */}
       <aside className="w-56 flex-shrink-0 flex flex-col bg-white dark:bg-slate-900 border-r border-slate-200 dark:border-slate-800">
         <div className="p-4 border-b border-slate-200 dark:border-slate-800">
@@ -209,7 +206,14 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             <button onClick={() => setTheme(theme === 'dark' ? 'light' : 'dark')} className="sidebar-link flex-1 justify-center text-slate-500 hover:text-amber-500 dark:text-slate-400 dark:hover:text-amber-600 dark:text-amber-400" title="Toggle Theme">
               {theme === 'dark' ? <Sun size={16} /> : <Moon size={16} />}
             </button>
-            <button onClick={() => { logout(); router.replace('/login'); }} className="sidebar-link flex-1 justify-center text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300" title="Sign out">
+            <button
+              onClick={async () => {
+                await logout();
+                router.replace('/login');
+              }}
+              className="sidebar-link flex-1 justify-center text-red-500 hover:text-red-600 dark:text-red-400 dark:hover:text-red-300"
+              title="Sign out"
+            >
               <LogOut size={16} />
             </button>
           </div>
@@ -225,4 +229,4 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
       </main>
     </div>
   );
-}
+}//layout.tsx

@@ -14,6 +14,7 @@ import { PasswordResetToken } from './entities/password-reset-token.entity';
 import { LoginDto, RegisterTenantDto } from './dto/login.dto';
 import { JwtPayload } from './strategies/jwt.strategy';
 import { MailerService } from '../mailer/mailer.service';
+import { SessionService } from './session.service';
 
 @Injectable()
 export class AuthService {
@@ -28,6 +29,7 @@ export class AuthService {
     private readonly config: ConfigService,
     private readonly dataSource: DataSource,
     private readonly mailer: MailerService,
+    private readonly sessionService: SessionService,   // ← ADDED
   ) {}
 
   async register(dto: RegisterTenantDto) {
@@ -93,13 +95,9 @@ export class AuthService {
     });
   }
 
-  async login(dto: LoginDto) {
-    // Superadmin login: look up by email only (no tenant scope).
-    // SUPERADMIN_EMAIL must be set in production — the fallback is a known
-    // default visible in source code and must never be used on a live server.
+  async login(dto: LoginDto, ip?: string, userAgent?: string) {
     const superadminEmail = this.config.get<string>('SUPERADMIN_EMAIL');
     if (!superadminEmail && this.config.get('NODE_ENV') === 'production') {
-      // Log loudly but don't crash the login flow for regular tenants
       console.error('[SECURITY] SUPERADMIN_EMAIL is not set in production. Superadmin login is disabled.');
     }
     const effectiveSuperadminEmail = superadminEmail || 'superadmin@dinestay.app';
@@ -109,8 +107,22 @@ export class AuthService {
       if (saUser) {
         const valid = await bcrypt.compare(dto.password ?? '', saUser.passwordHash);
         if (!valid) throw new UnauthorizedException('Invalid credentials');
+
         saUser.lastLoginAt = new Date();
-        const tokens = await this.generateTokens(saUser, 'superadmin', null);
+
+        // Create Redis session for superadmin
+        const sessionId = await this.sessionService.createSession({
+          userId:    saUser.id,
+          refreshToken: 'pending',   // placeholder — rotated below
+          ip,
+          userAgent,
+        });
+
+        const tokens = await this.generateTokens(saUser, 'superadmin', null, sessionId);
+
+        // Update session with real refresh token hash
+        await this.sessionService.rotateSession(saUser.id, sessionId, tokens.refreshToken);
+
         saUser.refreshToken = await bcrypt.hash(tokens.refreshToken, 10);
         await this.userRepo.save(saUser);
         return { ...tokens, user: this.sanitizeUser(saUser) };
@@ -127,7 +139,6 @@ export class AuthService {
 
     let valid = false;
     if (dto.pin && user.pin) {
-      // PINs are bcrypt-hashed at rest — never compare in plaintext
       valid = await bcrypt.compare(String(dto.pin), user.pin);
     } else {
       valid = await bcrypt.compare(dto.password, user.passwordHash);
@@ -136,10 +147,21 @@ export class AuthService {
 
     user.lastLoginAt = new Date();
     const branchId = dto.branchId || user.branchId;
-    // Superadmin tokens carry a literal 'superadmin' tenantId so the JWT
-    // strategy can identify them without a DB tenant lookup.
     const jwtTenantId = user.role === 'superadmin' ? 'superadmin' : user.tenantId;
-    const tokens = await this.generateTokens(user, jwtTenantId, branchId);
+
+    // Create Redis session
+    const sessionId = await this.sessionService.createSession({
+      userId:      user.id,
+      refreshToken: 'pending',   // placeholder — rotated below
+      ip,
+      userAgent,
+    });
+
+    const tokens = await this.generateTokens(user, jwtTenantId, branchId, sessionId);
+
+    // Update session with real refresh token hash
+    await this.sessionService.rotateSession(user.id, sessionId, tokens.refreshToken);
+
     user.refreshToken = await bcrypt.hash(tokens.refreshToken, 10);
     await this.userRepo.save(user);
 
@@ -151,23 +173,54 @@ export class AuthService {
       const payload = this.jwtService.verify<JwtPayload>(refreshToken, {
         secret: this.config.get('JWT_REFRESH_SECRET'),
       });
+
+      // Validate session still exists in Redis
+      if (payload.sessionId) {
+        const valid = await this.sessionService.validateSession(
+          payload.sub,
+          payload.sessionId,
+          refreshToken,
+        );
+        if (!valid) throw new UnauthorizedException('Session expired or revoked');
+
+        const user = await this.userRepo.findOne({ where: { id: payload.sub, isActive: true } });
+        if (!user) throw new UnauthorizedException();
+
+        // Rotate session with new refresh token
+        const tokens = await this.generateTokens(user, payload.tenantId, payload.branchId ?? null, payload.sessionId);
+        await this.sessionService.rotateSession(user.id, payload.sessionId, tokens.refreshToken);
+
+        user.refreshToken = await bcrypt.hash(tokens.refreshToken, 10);
+        await this.userRepo.save(user);
+
+        return tokens;
+      }
+
+      // Fallback for tokens without sessionId (old tokens)
       const user = await this.userRepo.findOne({ where: { id: payload.sub, isActive: true } });
       if (!user || !user.refreshToken) throw new UnauthorizedException();
       const valid = await bcrypt.compare(refreshToken, user.refreshToken);
       if (!valid) throw new UnauthorizedException();
-      return this.generateTokens(user, user.tenantId, user.branchId);
+      return this.generateTokens(user, user.tenantId, user.branchId, undefined);
+
     } catch {
       throw new UnauthorizedException('Invalid refresh token');
     }
   }
 
-  private async generateTokens(user: User, tenantId: string, branchId: string | null) {
+  private async generateTokens(
+    user: User,
+    tenantId: string,
+    branchId: string | null,
+    sessionId?: string,        // ← ADDED
+  ) {
     const payload: JwtPayload = {
       sub: user.id,
       email: user.email,
       tenantId,
       branchId,
       role: user.role,
+      ...(sessionId && { sessionId }),   // ← embed sessionId in JWT
     };
     const [accessToken, refreshToken] = await Promise.all([
       this.jwtService.signAsync(payload, {
@@ -182,22 +235,19 @@ export class AuthService {
     return { accessToken, refreshToken };
   }
 
-  // ─── Password Reset ──────────────────────────────────────────────────────
+  // ─── Password Reset ───────────────────────────────────────────────────────
 
   async forgotPassword(email: string, ip?: string): Promise<void> {
-    // Always return success — never leak whether email exists
     const user = await this.userRepo.findOne({ where: { email, isActive: true } });
     if (!user) return;
 
-    // Invalidate any existing tokens for this user
     await this.prtRepo.delete({ userId: user.id });
 
-    // Generate a secure random token
     const rawToken = crypto.randomBytes(32).toString('hex');
     const tokenHash = await bcrypt.hash(rawToken, 10);
 
     const expiresAt = new Date();
-    expiresAt.setHours(expiresAt.getHours() + 1); // 1 hour expiry
+    expiresAt.setHours(expiresAt.getHours() + 1);
 
     await this.prtRepo.save(
       this.prtRepo.create({ userId: user.id, tenantId: user.tenantId, tokenHash, expiresAt, ipAddress: ip }),
@@ -227,25 +277,26 @@ export class AuthService {
     const valid = await bcrypt.compare(rawToken, prt.tokenHash);
     if (!valid) throw new BadRequestException('Invalid reset link');
 
-    // Mark token as used
     prt.usedAt = new Date();
     await this.prtRepo.save(prt);
 
-    // Update password
     user.passwordHash = await bcrypt.hash(newPassword, 12);
-    user.refreshToken = null as any; // invalidate all active sessions
+    user.refreshToken = null as any;
+
+    // Revoke all Redis sessions on password reset
+    await this.sessionService.revokeAllSessions(userId);
+
     await this.userRepo.save(user);
   }
 
   async changePassword(userId: string, current: string, newPass: string) {
     const user = await this.userRepo.findOne({ where: { id: userId, isActive: true } });
     if (!user) throw new NotFoundException('User not found');
-    
+
     const valid = await bcrypt.compare(current, user.passwordHash);
     if (!valid) throw new BadRequestException('Incorrect current password');
-    
+
     user.passwordHash = await bcrypt.hash(newPass, 12);
-    // Do NOT invalidate current session, just update the hash
     await this.userRepo.save(user);
   }
 
@@ -253,4 +304,4 @@ export class AuthService {
     const { passwordHash, refreshToken, pin, ...safe } = user as any;
     return safe;
   }
-}
+}//service
