@@ -13,6 +13,7 @@ import { Payment }          from '../billing/entities/payment.entity';
 
 import { ChannelManagerService } from './channel-manager.service';
 import { HotelWebhookController } from './hotel-webhook.controller';
+import { ShiftsModule } from '../shifts/shifts.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { HotelWebhookController } from './hotel-webhook.controller';
       RoomType, Room, Guest, Reservation, FolioCharge, HousekeepingTask,
       Bill, Payment
     ]),
+    ShiftsModule,
   ],
   providers:   [HotelService, ChannelManagerService],
   controllers: [HotelController, HotelWebhookController],

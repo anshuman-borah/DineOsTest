@@ -29,6 +29,7 @@ import {
   GstType,
 } from "../billing/entities/bill.entity";
 import { Payment, PaymentMethod } from "../billing/entities/payment.entity";
+import { Shift } from "../shifts/entities/shift.entity";
 import { ChannelManagerService } from "./channel-manager.service";
 import { forwardRef, Inject } from "@nestjs/common";
 
@@ -735,6 +736,7 @@ export class HotelService {
     tenantId: string,
     paymentMethod: PaymentMethod = PaymentMethod.CASH,
     amountPaid: number = 0,
+    shiftId?: string,
   ) {
     const { reservation, charges, balance } = await this.getFolio(
       reservationId,
@@ -783,6 +785,7 @@ export class HotelService {
         tenantId,
         branchId: reservation.branchId,
         reservationId,
+        shiftId: shiftId || undefined,
         source: BillSource.HOTEL,
         billNumber,
         invoiceNumber: billNumber,
@@ -813,6 +816,7 @@ export class HotelService {
           tenantId,
           branchId: reservation.branchId,
           billId: bill.id,
+          shiftId: shiftId || undefined,
           method: paymentMethod,
           amount: amountPaid,
         });
@@ -835,6 +839,7 @@ export class HotelService {
           tenantId,
           branchId: reservation.branchId,
           billId: bill.id,
+          shiftId: shiftId || undefined,
           method: PaymentMethod.CASH, // Defaulting advance to cash for now
           amount: advances,
           referenceNo: "Advance",
@@ -842,8 +847,56 @@ export class HotelService {
         await em.save(advPayment);
       }
 
+      // ── Update shift totals if a shift is active ────────────────────────
+      if (shiftId) {
+        await this.updateHotelShiftTotals(shiftId, bill, paymentMethod, amountPaid, advances, em);
+      }
+
       return bill;
     });
+  }
+
+  /**
+   * Update shift running totals when a hotel bill is generated.
+   * Mirrors restaurant BillingService.updateShiftTotals().
+   */
+  private async updateHotelShiftTotals(
+    shiftId: string,
+    bill: Bill,
+    paymentMethod: PaymentMethod,
+    amountPaid: number,
+    advances: number,
+    em: any,
+  ) {
+    const shift = await em.findOne(Shift, { where: { id: shiftId } });
+    if (!shift) return;
+
+    shift.totalSales  = Number(shift.totalSales  || 0) + Number(bill.grandTotal);
+    shift.totalOrders = Number(shift.totalOrders || 0) + 1;
+
+    // Track the new payment by method
+    if (amountPaid > 0) {
+      switch (paymentMethod) {
+        case PaymentMethod.CASH:          shift.cashSales     = Number(shift.cashSales     || 0) + amountPaid; break;
+        case PaymentMethod.CARD:          shift.cardSales     = Number(shift.cardSales     || 0) + amountPaid; break;
+        case PaymentMethod.UPI:           shift.upiSales      = Number(shift.upiSales      || 0) + amountPaid; break;
+        case PaymentMethod.WALLET:        shift.walletSales   = Number(shift.walletSales   || 0) + amountPaid; break;
+        case PaymentMethod.CREDIT:        shift.creditSales   = Number(shift.creditSales   || 0) + amountPaid; break;
+        case PaymentMethod.COMPLIMENTARY: shift.complimentary = Number(shift.complimentary || 0) + amountPaid; break;
+      }
+    }
+
+    // Advances are tracked as cash by default
+    if (advances > 0) {
+      shift.cashSales = Number(shift.cashSales || 0) + advances;
+    }
+
+    // Update GST totals
+    shift.totalCgst = Number(shift.totalCgst || 0) + Number(bill.cgstAmount);
+    shift.totalSgst = Number(shift.totalSgst || 0) + Number(bill.sgstAmount);
+    shift.totalIgst = Number(shift.totalIgst || 0) + Number(bill.igstAmount);
+
+    await em.save(shift);
   }
 
   // ── Reports ─────────────────────────────────────────────────────────────────

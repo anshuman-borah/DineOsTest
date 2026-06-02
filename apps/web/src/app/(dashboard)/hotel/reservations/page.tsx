@@ -18,6 +18,7 @@ import {
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { api } from '@/lib/api';
+import Link from 'next/link';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -343,8 +344,30 @@ function NewReservationDrawer({ onClose, onCreated }: { onClose: () => void; onC
 // ─── Checkout Dialog (Real-world flow: review folio → collect payment → generate bill) ────
 
 function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reservation; onClose: () => void; onDone: () => void }) {
-  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi' | 'wallet'>('cash');
+  const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi' | 'wallet'>('card');
   const [amountPaid, setAmountPaid] = useState('');
+
+  // ── Fetch active hotel shift ───────────────────────────────────────────────
+  const { data: hotelShift } = useQuery<{ id: string } | null>({
+    queryKey: ['hotel-shift-current'],
+    queryFn: async () => {
+      try {
+        const res = await api.get('/api/v1/hotel-shifts/current');
+        const d = res.data;
+        // Response could be null, direct object, or wrapped
+        if (!d) return null;
+        if (d.id) return d;
+        if (d.data?.id) return d.data;
+        return null;
+      } catch {
+        return null;
+      }
+    },
+    staleTime: 30_000,
+  });
+
+  const hasActiveShift = !!hotelShift?.id;
+  const isCashBlocked = paymentMethod === 'cash' && !hasActiveShift;
 
   const { data: folio, isLoading: folioLoading } = useQuery<{ charges: FolioCharge[]; totalCharges: number; totalPaid: number; balance: number }>({
     queryKey: ['hotel-folio-checkout', reservation.id],
@@ -364,9 +387,11 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
       // 1. Perform checkout (marks room as cleaning, creates HK task)
       await api.post(`/api/v1/hotel/reservations/${reservation.id}/check-out`);
       // 2. Generate the final bill with payment collected
+      //    Pass shiftId so the backend can link payment to the shift
       await api.post(`/api/v1/hotel/reservations/${reservation.id}/bill`, {
         paymentMethod,
         amountPaid: paid,
+        shiftId: hotelShift?.id || undefined,
       });
     },
     onSuccess: () => {
@@ -455,6 +480,31 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
                 </button>
               ))}
             </div>
+
+            {/* Cash payment shift warning */}
+            {isCashBlocked && (
+              <div className="bg-amber-500/10 border border-amber-500/30 rounded-lg p-3 text-xs space-y-1.5">
+                <div className="font-semibold text-amber-600 dark:text-amber-400">⚠ No Active Hotel Shift</div>
+                <div className="text-amber-700 dark:text-amber-300/80">
+                  Cash payments require an open shift for drawer accountability.
+                  Use Card or UPI instead, or open a shift first.
+                </div>
+                <Link
+                  href="/hotel/shifts"
+                  className="inline-flex items-center gap-1 text-amber-600 dark:text-amber-400 font-semibold hover:text-amber-500 dark:hover:text-amber-300 underline"
+                >
+                  Open Hotel Shift →
+                </Link>
+              </div>
+            )}
+
+            {/* Shift linked indicator */}
+            {hasActiveShift && (
+              <div className="text-[10px] text-emerald-600 dark:text-emerald-400/70">
+                ✓ Payment will be tracked in the current hotel shift
+              </div>
+            )}
+
             <input
               type="number"
               placeholder={`Amount collected (₹${balance.toLocaleString('en-IN')} due)`}
@@ -470,11 +520,13 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
           {/* Confirm */}
           <button
             onClick={() => checkoutMutation.mutate()}
-            disabled={checkoutMutation.isPending || folioLoading}
+            disabled={checkoutMutation.isPending || folioLoading || isCashBlocked}
             className="btn-primary w-full flex items-center justify-center gap-2 py-2.5 disabled:opacity-50"
           >
             {checkoutMutation.isPending ? (
               <><Loader2 size={14} className="animate-spin" /> Processing…</>
+            ) : isCashBlocked ? (
+              <>⚠ Open Shift to Accept Cash</>
             ) : (
               <><LogOut size={14} /> Confirm Checkout & Generate Bill</>
             )}
