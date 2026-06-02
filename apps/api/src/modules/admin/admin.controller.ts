@@ -110,4 +110,20 @@ export class AdminController {
   @Get('charts/signups')
   @ApiOperation({ summary: 'Daily new tenant signups for the last 30 days' })
   getSignupsTrend() { return this.svc.getSignupsTrend(); }
+  // ── Plan management ────────────────────────────────────────────────────────
+  @Get('plans')
+  @ApiOperation({ summary: 'List all subscription plans' })
+  listPlans() { return this.svc.listPlans(); }
+
+  @Post('plans')
+  @ApiOperation({ summary: 'Create a new subscription plan' })
+  createPlan(@Body() body: any) { return this.svc.createPlan(body); }
+
+  @Patch('plans/:id')
+  @ApiOperation({ summary: 'Update an existing subscription plan' })
+  updatePlan(@Param('id') id: string, @Body() body: any) { return this.svc.updatePlan(id, body); }
+
+  @Delete('plans/:id')
+  @ApiOperation({ summary: 'Deactivate or delete a subscription plan' })
+  deletePlan(@Param('id') id: string) { return this.svc.deletePlan(id); }
 }

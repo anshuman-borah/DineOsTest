@@ -5,7 +5,7 @@ import { Repository } from 'typeorm';
 import * as crypto from 'crypto';
 import Razorpay from 'razorpay';
 import { Subscription, SubscriptionStatus } from '../subscriptions/entities/subscription.entity';
-import { Plan, PlanCode } from '../subscriptions/entities/plan.entity';
+import { Plan } from '../subscriptions/entities/plan.entity';
 import { Tenant } from '../tenants/entities/tenant.entity';
 
 @Injectable()
@@ -37,7 +37,7 @@ export class RazorpayService {
   async createSubscription(tenantId: string, planCode: string, frequency: 'monthly' | 'yearly' = 'monthly') {
     if (!this.client) throw new BadRequestException('Razorpay not configured');
 
-    const plan = await this.planRepo.findOne({ where: { code: planCode as PlanCode } });
+    const plan = await this.planRepo.findOne({ where: { code: planCode } });
     if (!plan) throw new BadRequestException('Plan not found');
 
     const amount = frequency === 'yearly'
@@ -85,7 +85,7 @@ export class RazorpayService {
     razorpayPaymentId: string;
     razorpayOrderId: string;
   }): Promise<Subscription> {
-    const plan = await this.planRepo.findOne({ where: { code: opts.planCode as PlanCode } });
+    const plan = await this.planRepo.findOne({ where: { code: opts.planCode } });
     if (!plan) throw new BadRequestException('Plan not found');
 
     const now = new Date();

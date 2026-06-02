@@ -102,6 +102,18 @@ export class AuthController {
   @SkipThrottle()
   @UseGuards(JwtAuthGuard)
   @ApiBearerAuth()
+  @Post('change-password')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Change current user password' })
+  changePassword(@Req() req: Request, @Body() dto: any) {
+    const user = (req as any).user;
+    return this.authService.changePassword(user.sub ?? user.id, dto.currentPassword, dto.newPassword)
+      .then(() => ({ message: 'Password updated successfully' }));
+  }
+
+  @SkipThrottle()
+  @UseGuards(JwtAuthGuard)
+  @ApiBearerAuth()
   @Get('sessions')
   @ApiOperation({ summary: 'List all active sessions for the current user' })
   listSessions(@Req() req: Request) {

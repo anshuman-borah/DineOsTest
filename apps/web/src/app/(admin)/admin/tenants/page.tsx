@@ -10,7 +10,7 @@ import { format } from 'date-fns';
 import {
   Building2, Plus, Search, RefreshCw, Loader2, X,
   CheckCircle2, Ban, Trash2, ChevronLeft, ChevronRight,
-  Users, GitBranch, ShoppingBag,
+  Users, GitBranch, ShoppingBag, Pencil,
 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { cn } from '@/lib/utils';
@@ -160,6 +160,75 @@ function AddBusinessModal({ onClose }: { onClose: () => void }) {
   );
 }
 
+// ─── Edit Subscription Modal ──────────────────────────────────────────────────
+
+function EditSubscriptionModal({ tenant, onClose }: { tenant: Tenant; onClose: () => void }) {
+  const qc = useQueryClient();
+  const [form, setForm] = useState({
+    planCode: tenant.plan_name?.toLowerCase() || 'starter',
+    status: tenant.sub_status || 'active',
+  });
+
+  const { mutate, isPending, error } = useMutation({
+    mutationFn: (body: typeof form) => api.patch(`/api/v1/admin/tenants/${tenant.id}/plan`, body).then(r => r.data),
+    onSuccess: () => {
+      toast.success('Subscription updated');
+      qc.invalidateQueries({ queryKey: ['admin-tenants'] });
+      onClose();
+    },
+    onError: (e: any) => {
+      const msg = e?.response?.data?.message || 'Failed to update subscription';
+      toast.error(Array.isArray(msg) ? msg.join(', ') : msg);
+    },
+  });
+
+  const err = (error as any)?.response?.data?.message;
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl w-full max-w-sm p-6 space-y-5" onClick={e => e.stopPropagation()}>
+        <div className="flex items-center justify-between">
+          <h2 className="text-base font-semibold text-slate-900 dark:text-white">Edit Subscription</h2>
+          <button onClick={onClose} className="p-1 text-slate-900 dark:text-slate-500 hover:text-slate-600 dark:text-slate-300"><X size={16} /></button>
+        </div>
+
+        {err && <p className="text-xs text-red-600 dark:text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</p>}
+
+        <div className="space-y-3">
+          <div className="space-y-1">
+            <label className="label">Plan</label>
+            <select className="input-field w-full" value={form.planCode} onChange={e => setForm(p => ({ ...p, planCode: e.target.value }))}>
+              <option value="starter">Starter</option>
+              <option value="growth">Growth</option>
+              <option value="enterprise">Enterprise</option>
+            </select>
+          </div>
+          <div className="space-y-1">
+            <label className="label">Status</label>
+            <select className="input-field w-full" value={form.status} onChange={e => setForm(p => ({ ...p, status: e.target.value }))}>
+              <option value="active">Active</option>
+              <option value="trial">Trial</option>
+              <option value="past_due">Past Due</option>
+              <option value="cancelled">Cancelled</option>
+              <option value="paused">Paused</option>
+            </select>
+          </div>
+        </div>
+
+        <div className="flex gap-2 pt-1">
+          <button
+            onClick={() => mutate(form)}
+            disabled={isPending}
+            className="btn-primary flex-1 flex items-center justify-center gap-2"
+          >
+            {isPending ? <Loader2 size={14} className="animate-spin" /> : 'Save Changes'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main page ────────────────────────────────────────────────────────────────
 
 export default function TenantsPage() {
@@ -167,6 +236,7 @@ export default function TenantsPage() {
   const [search, setSearch]   = useState('');
   const [page, setPage]       = useState(1);
   const [showAdd, setShowAdd] = useState(false);
+  const [editSub, setEditSub] = useState<Tenant | null>(null);
   const [deleting, setDeleting]   = useState<string | null>(null);
   const [toggling, setToggling]   = useState<string | null>(null);
 
@@ -314,6 +384,13 @@ export default function TenantsPage() {
                   <td className="td">
                     <div className="flex items-center justify-end gap-1">
                       <button
+                        onClick={() => setEditSub(t)}
+                        title="Edit Subscription"
+                        className="p-1.5 rounded-lg text-slate-600 dark:text-slate-400 hover:bg-slate-200 dark:hover:bg-slate-700 transition-colors"
+                      >
+                        <Pencil size={13} />
+                      </button>
+                      <button
                         onClick={() => toggleActive({ id: t.id, active: !t.is_active })}
                         disabled={toggling === t.id}
                         title={t.is_active ? 'Suspend' : 'Activate'}
@@ -370,6 +447,7 @@ export default function TenantsPage() {
       )}
 
       {showAdd && <AddBusinessModal onClose={() => setShowAdd(false)} />}
+      {editSub && <EditSubscriptionModal tenant={editSub} onClose={() => setEditSub(null)} />}
     </div>
   );
 }

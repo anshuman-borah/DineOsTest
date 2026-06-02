@@ -237,6 +237,18 @@ export class AuthService {
     await this.userRepo.save(user);
   }
 
+  async changePassword(userId: string, current: string, newPass: string) {
+    const user = await this.userRepo.findOne({ where: { id: userId, isActive: true } });
+    if (!user) throw new NotFoundException('User not found');
+    
+    const valid = await bcrypt.compare(current, user.passwordHash);
+    if (!valid) throw new BadRequestException('Incorrect current password');
+    
+    user.passwordHash = await bcrypt.hash(newPass, 12);
+    // Do NOT invalidate current session, just update the hash
+    await this.userRepo.save(user);
+  }
+
   private sanitizeUser(user: User) {
     const { passwordHash, refreshToken, pin, ...safe } = user as any;
     return safe;

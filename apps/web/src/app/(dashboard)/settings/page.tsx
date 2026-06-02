@@ -589,8 +589,96 @@ function SecurityTab() {
 
   const sessionList: any[] = Array.isArray(sessions) ? sessions : [];
 
+  const [pwdForm, setPwdForm] = useState({ currentPassword: '', newPassword: '', confirmPassword: '' });
+  const [showPwd, setShowPwd] = useState({ current: false, new: false });
+
+  const pwdMutation = useMutation({
+    mutationFn: () => api.post('/api/v1/auth/change-password', { currentPassword: pwdForm.currentPassword, newPassword: pwdForm.newPassword }),
+    onSuccess: () => {
+      toast.success('Password changed successfully');
+      setPwdForm({ currentPassword: '', newPassword: '', confirmPassword: '' });
+    },
+    onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to change password'),
+  });
+
+  const handlePwdSubmit = (e: React.FormEvent) => {
+    e.preventDefault();
+    if (pwdForm.newPassword !== pwdForm.confirmPassword) {
+      return toast.error('New passwords do not match');
+    }
+    if (pwdForm.newPassword.length < 8) {
+      return toast.error('New password must be at least 8 characters');
+    }
+    pwdMutation.mutate();
+  };
+
   return (
-    <div className="max-w-lg space-y-5">
+    <div className="max-w-lg space-y-8">
+      {/* ── Change Password ── */}
+      <div>
+        <h2 className="text-lg font-bold text-slate-900 dark:text-white mb-4">Change Password</h2>
+        <form onSubmit={handlePwdSubmit} className="space-y-4 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl p-5">
+          <div>
+            <label className="label text-xs">Current Password</label>
+            <div className="relative">
+              <input
+                className="input pr-10 bg-white dark:bg-slate-950"
+                type={showPwd.current ? 'text' : 'password'}
+                value={pwdForm.currentPassword}
+                onChange={(e) => setPwdForm({ ...pwdForm, currentPassword: e.target.value })}
+                required
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd(s => ({ ...s, current: !s.current }))}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                {showPwd.current ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="label text-xs">New Password</label>
+            <div className="relative">
+              <input
+                className="input pr-10 bg-white dark:bg-slate-950"
+                type={showPwd.new ? 'text' : 'password'}
+                value={pwdForm.newPassword}
+                onChange={(e) => setPwdForm({ ...pwdForm, newPassword: e.target.value })}
+                required minLength={8}
+              />
+              <button
+                type="button"
+                onClick={() => setShowPwd(s => ({ ...s, new: !s.new }))}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-300"
+              >
+                {showPwd.new ? <EyeOff size={15} /> : <Eye size={15} />}
+              </button>
+            </div>
+          </div>
+          <div>
+            <label className="label text-xs">Confirm New Password</label>
+            <input
+              className="input bg-white dark:bg-slate-950"
+              type={showPwd.new ? 'text' : 'password'}
+              value={pwdForm.confirmPassword}
+              onChange={(e) => setPwdForm({ ...pwdForm, confirmPassword: e.target.value })}
+              required minLength={8}
+            />
+          </div>
+          <button
+            type="submit"
+            disabled={pwdMutation.isPending || !pwdForm.currentPassword || !pwdForm.newPassword || !pwdForm.confirmPassword}
+            className="btn-primary w-full mt-2"
+          >
+            {pwdMutation.isPending ? 'Updating...' : 'Update Password'}
+          </button>
+        </form>
+      </div>
+
+      <hr className="border-slate-200 dark:border-slate-800" />
+
+      {/* ── Active Sessions ── */}
       <div>
         <h2 className="text-lg font-bold text-slate-900 dark:text-white">Active Sessions</h2>
         <p className="text-sm text-slate-900 dark:text-slate-400 mt-1">

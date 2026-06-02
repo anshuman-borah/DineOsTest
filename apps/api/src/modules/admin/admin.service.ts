@@ -1,11 +1,15 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
-import { InjectDataSource } from '@nestjs/typeorm';
-import { DataSource } from 'typeorm';
+import { InjectDataSource, InjectRepository } from '@nestjs/typeorm';
+import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcryptjs';
+import { Plan } from '../subscriptions/entities/plan.entity';
 
 @Injectable()
 export class AdminService {
-  constructor(@InjectDataSource() private readonly db: DataSource) {}
+  constructor(
+    @InjectDataSource() private readonly db: DataSource,
+    @InjectRepository(Plan) private readonly planRepo: Repository<Plan>,
+  ) {}
 
   // ── Platform-wide stats ──────────────────────────────────────────────────
 
@@ -334,5 +338,47 @@ export class AdminService {
       date: r.date,
       signups: parseInt(r.signups),
     }));
+  }
+
+  // ── Plan management ────────────────────────────────────────────────────────
+
+  async listPlans() {
+    return this.planRepo.find({ order: { priceMonthly: 'ASC' } });
+  }
+
+  async createPlan(data: Partial<Plan>) {
+    const existing = await this.planRepo.findOne({ where: { code: data.code } });
+    if (existing) throw new ConflictException(`Plan code '${data.code}' already exists`);
+    const plan = this.planRepo.create(data);
+    return this.planRepo.save(plan);
+  }
+
+  async updatePlan(id: string, data: Partial<Plan>) {
+    const plan = await this.planRepo.findOne({ where: { id } });
+    if (!plan) throw new NotFoundException('Plan not found');
+    
+    if (data.code && data.code !== plan.code) {
+      const existing = await this.planRepo.findOne({ where: { code: data.code } });
+      if (existing) throw new ConflictException(`Plan code '${data.code}' already exists`);
+    }
+
+    Object.assign(plan, data);
+    return this.planRepo.save(plan);
+  }
+
+  async deletePlan(id: string) {
+    const plan = await this.planRepo.findOne({ where: { id } });
+    if (!plan) throw new NotFoundException('Plan not found');
+    
+    const [sub] = await this.db.query(`SELECT id FROM subscriptions WHERE plan_id = $1 LIMIT 1`, [id]);
+    if (sub) {
+      // Soft delete if subscriptions exist
+      plan.isActive = false;
+      await this.planRepo.save(plan);
+      return { success: true, message: 'Plan deactivated because it has active subscriptions' };
+    }
+    
+    await this.planRepo.delete(id);
+    return { success: true, message: 'Plan permanently deleted' };
   }
 }

@@ -1,11 +1,9 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
 
-export enum PlanCode { STARTER = 'starter', GROWTH = 'growth', ENTERPRISE = 'enterprise' }
-
 @Entity('plans')
 export class Plan {
   @PrimaryGeneratedColumn('uuid') id: string;
-  @Column({ type: 'enum', enum: PlanCode, unique: true }) code: PlanCode;
+  @Column({ type: 'varchar', unique: true }) code: string;
   @Column() name: string;
   @Column({ nullable: true, type: 'text' }) description: string;
   @Column({ name: 'price_monthly', type: 'numeric', precision: 10, scale: 2 }) priceMonthly: number;
