@@ -14,13 +14,18 @@ import { ReservationStatus, BookingSource } from './entities/reservation.entity'
 import { ChargeType } from './entities/folio-charge.entity';
 import { HkStatus, HkTaskType, HkPriority } from './entities/housekeeping-task.entity';
 import { PaymentMethod } from '../billing/entities/payment.entity';
+import { ShiftsService } from '../shifts/shifts.service';
+import { ShiftDepartment } from '../shifts/entities/shift.entity';
 
 @ApiTags('hotel')
 @ApiBearerAuth()
 @UseGuards(JwtAuthGuard, RolesGuard)
 @Controller({ path: 'hotel', version: '1' })
 export class HotelController {
-  constructor(private readonly svc: HotelService) { }
+  constructor(
+    private readonly svc: HotelService,
+    private readonly shiftsService: ShiftsService,
+  ) {}
 
   // ── Dashboard ──────────────────────────────────────────────────────────────
 
@@ -210,13 +215,35 @@ export class HotelController {
 
   @Post('reservations/:id/bill')
   @Roles('owner', 'manager', 'cashier', 'receptionist')
-  generateBill(
+  async generateBill(
     @Param('id') id: string,
     @TenantId() tid: string,
+    @BranchId() branchId: string,
     @Body('paymentMethod') paymentMethod?: PaymentMethod,
     @Body('amountPaid') amountPaid?: number,
+    @Body('shiftId') shiftId?: string,
   ) {
-    return this.svc.generateBill(id, tid, paymentMethod, amountPaid);
+    // ── Resolve hotel shift & enforce cash-only shift requirement ──────────
+    let resolvedShiftId = shiftId;
+
+    if (!resolvedShiftId) {
+      // Auto-detect active hotel shift for this branch
+      const activeShift = await this.shiftsService.getActiveShift(
+        branchId, tid, ShiftDepartment.HOTEL,
+      );
+      if (activeShift?.id) resolvedShiftId = activeShift.id;
+    }
+
+    // Cash payments REQUIRE an active hotel shift (for cash drawer accountability)
+    const method = paymentMethod ?? PaymentMethod.CASH;
+    if (method === PaymentMethod.CASH && !resolvedShiftId) {
+      throw new BadRequestException(
+        'No active hotel shift. Open a shift before accepting cash payments.',
+      );
+    }
+
+    // Non-cash methods (card, UPI, wallet, etc.) proceed without a shift
+    return this.svc.generateBill(id, tid, method, amountPaid, resolvedShiftId);
   }
 
   // ── Reports ─────────────────────────────────────────────────────────────────
