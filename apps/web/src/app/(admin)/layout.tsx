@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { useAuthStore } from '@/store/auth.store';
 import {
   LayoutDashboard, Users, CreditCard,
-  Activity, LogOut, ShieldAlert, Loader2, Gem
+  Activity, LogOut, ShieldAlert, Loader2, Gem, Settings
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
@@ -15,6 +15,7 @@ const NAV = [
   { href: '/admin/subscriptions', label: 'Subscriptions',  icon: CreditCard },
   { href: '/admin/plans',         label: 'Plans',          icon: Gem },
   { href: '/admin/activity',      label: 'Activity',       icon: Activity },
+  { href: '/admin/settings',      label: 'Settings',       icon: Settings },
 ];
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {

@@ -126,4 +126,13 @@ export class AdminController {
   @Delete('plans/:id')
   @ApiOperation({ summary: 'Deactivate or delete a subscription plan' })
   deletePlan(@Param('id') id: string) { return this.svc.deletePlan(id); }
+
+  // ── Global settings ────────────────────────────────────────────────────────
+  @Get('settings')
+  @ApiOperation({ summary: 'Get global platform settings' })
+  getSettings() { return this.svc.getSettings(); }
+
+  @Patch('settings')
+  @ApiOperation({ summary: 'Update global platform settings' })
+  updateSettings(@Body() body: any) { return this.svc.updateSettings(body); }
 }

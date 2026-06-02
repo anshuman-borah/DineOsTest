@@ -381,4 +381,23 @@ export class AdminService {
     await this.planRepo.delete(id);
     return { success: true, message: 'Plan permanently deleted' };
   }
+
+  // ── Superadmin Settings ──────────────────────────────────────────────────
+
+  async getSettings() {
+    const [tenant] = await this.db.query(`SELECT settings FROM tenants WHERE slug = '_system'`);
+    return tenant?.settings || {};
+  }
+
+  async updateSettings(settings: Record<string, any>) {
+    const [tenant] = await this.db.query(`SELECT settings FROM tenants WHERE slug = '_system'`);
+    if (!tenant) throw new NotFoundException('System tenant not found');
+
+    const merged = { ...tenant.settings, ...settings };
+    await this.db.query(
+      `UPDATE tenants SET settings = $1::jsonb, updated_at = NOW() WHERE slug = '_system'`,
+      [JSON.stringify(merged)]
+    );
+    return { success: true, settings: merged };
+  }
 }

@@ -41,7 +41,7 @@ export class RazorpayController {
       frequency?: 'monthly' | 'yearly';
     },
   ) {
-    const valid = this.razorpayService.verifyPaymentSignature({
+    const valid = await this.razorpayService.verifyPaymentSignature({
       orderId: body.razorpayOrderId,
       paymentId: body.razorpayPaymentId,
       signature: body.razorpaySignature,

@@ -11,31 +11,35 @@ import { Tenant } from '../tenants/entities/tenant.entity';
 @Injectable()
 export class RazorpayService {
   private readonly logger = new Logger(RazorpayService.name);
-  private readonly client: Razorpay | null = null;
-  private readonly webhookSecret: string;
 
   constructor(
     private readonly config: ConfigService,
     @InjectRepository(Subscription) private readonly subRepo: Repository<Subscription>,
     @InjectRepository(Plan) private readonly planRepo: Repository<Plan>,
     @InjectRepository(Tenant) private readonly tenantRepo: Repository<Tenant>,
-  ) {
-    const keyId = config.get('RAZORPAY_KEY_ID', '');
-    const keySecret = config.get('RAZORPAY_KEY_SECRET', '');
-    this.webhookSecret = config.get('RAZORPAY_WEBHOOK_SECRET', '');
+  ) {}
 
+  private async getClientInfo(): Promise<{ client: Razorpay | null; webhookSecret: string; keyId: string }> {
+    const sysTenant = await this.tenantRepo.findOne({ where: { slug: '_system' } });
+    const settings = sysTenant?.settings || {};
+
+    const keyId = settings.razorpayKeyId || this.config.get('RAZORPAY_KEY_ID', '');
+    const keySecret = settings.razorpayKeySecret || this.config.get('RAZORPAY_KEY_SECRET', '');
+    const webhookSecret = settings.razorpayWebhookSecret || this.config.get('RAZORPAY_WEBHOOK_SECRET', '');
+
+    let client: Razorpay | null = null;
     if (keyId && keySecret && !keyId.includes('xxxxx')) {
-      this.client = new Razorpay({ key_id: keyId, key_secret: keySecret });
-      this.logger.log('Razorpay client initialized');
-    } else {
-      this.logger.warn('Razorpay not configured — payments will be skipped');
+      client = new Razorpay({ key_id: keyId, key_secret: keySecret });
     }
+
+    return { client, webhookSecret, keyId };
   }
 
   // ─── Create a Razorpay subscription for a tenant ─────────────────────────
 
   async createSubscription(tenantId: string, planCode: string, frequency: 'monthly' | 'yearly' = 'monthly') {
-    if (!this.client) throw new BadRequestException('Razorpay not configured');
+    const { client, keyId } = await this.getClientInfo();
+    if (!client) throw new BadRequestException('Razorpay not configured');
 
     const plan = await this.planRepo.findOne({ where: { code: planCode } });
     if (!plan) throw new BadRequestException('Plan not found');
@@ -45,7 +49,7 @@ export class RazorpayService {
       : Number(plan.priceMonthly) * 100;
 
     // Create Razorpay order (subscription-style one-time or recurring)
-    const order = await (this.client as any).orders.create({
+    const order = await (client as any).orders.create({
       amount: Math.round(amount),
       currency: 'INR',
       receipt: `sub_${tenantId.slice(0, 8)}_${Date.now()}`,
@@ -57,20 +61,23 @@ export class RazorpayService {
       orderId: order.id,
       amount: order.amount,
       currency: order.currency,
-      keyId: this.config.get('RAZORPAY_KEY_ID'),
+      keyId,
     };
   }
 
   // ─── Verify payment signature after frontend checkout ────────────────────
 
-  verifyPaymentSignature(opts: {
+  async verifyPaymentSignature(opts: {
     orderId: string;
     paymentId: string;
     signature: string;
-  }): boolean {
+  }): Promise<boolean> {
+    const sysTenant = await this.tenantRepo.findOne({ where: { slug: '_system' } });
+    const keySecret = sysTenant?.settings?.razorpayKeySecret || this.config.get('RAZORPAY_KEY_SECRET', '');
+
     const body = `${opts.orderId}|${opts.paymentId}`;
     const expectedSig = crypto
-      .createHmac('sha256', this.config.get('RAZORPAY_KEY_SECRET', ''))
+      .createHmac('sha256', keySecret)
       .update(body)
       .digest('hex');
     return expectedSig === opts.signature;
@@ -124,17 +131,16 @@ export class RazorpayService {
   // ─── Process Razorpay webhooks ────────────────────────────────────────────
 
   async handleWebhook(rawBody: Buffer, signature: string): Promise<{ processed: boolean; event: string }> {
+    const { webhookSecret } = await this.getClientInfo();
+
     // Always verify webhook authenticity — no bypass allowed.
-    // A missing or placeholder secret means the endpoint is not safe to expose;
-    // reject all incoming webhooks rather than process unverified payloads
-    // (an attacker could otherwise POST fake subscription.activated events for free).
-    if (!this.webhookSecret || this.webhookSecret === 'xxxxx') {
+    if (!webhookSecret || webhookSecret === 'xxxxx') {
       this.logger.error('RAZORPAY_WEBHOOK_SECRET is not configured — rejecting webhook');
-      throw new BadRequestException('Webhook endpoint is not configured. Set RAZORPAY_WEBHOOK_SECRET.');
+      throw new BadRequestException('Webhook endpoint is not configured.');
     }
 
     const expectedSig = crypto
-      .createHmac('sha256', this.webhookSecret)
+      .createHmac('sha256', webhookSecret)
       .update(rawBody)
       .digest('hex');
     if (expectedSig !== signature) {
