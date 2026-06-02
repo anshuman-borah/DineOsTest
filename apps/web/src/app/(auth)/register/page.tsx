@@ -1,6 +1,7 @@
 'use client';
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Eye, EyeOff } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { api } from '@/lib/api';
 import { useAuthStore } from '@/store/auth.store';
@@ -10,6 +11,7 @@ export default function RegisterPage() {
   const login = useAuthStore((s) => s.login);
   const [form, setForm] = useState({ businessName: '', email: '', phone: '', password: '' });
   const [loading, setLoading] = useState(false);
+  const [showPassword, setShowPassword] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -55,8 +57,17 @@ export default function RegisterPage() {
           </div>
           <div>
             <label className="label">Password</label>
-            <input className="input" type="password" placeholder="Min 8 characters" value={form.password}
-              onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
+            <div className="relative">
+              <input className="input pr-10" type={showPassword ? 'text' : 'password'} placeholder="Min 8 characters" value={form.password}
+                onChange={(e) => setForm({ ...form, password: e.target.value })} required minLength={8} />
+              <button
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-900 dark:text-slate-500 hover:text-slate-600 dark:text-slate-300 transition-colors"
+              >
+                {showPassword ? <EyeOff size={16} /> : <Eye size={16} />}
+              </button>
+            </div>
           </div>
           <button className="btn-primary w-full" disabled={loading}>
             {loading ? 'Creating account...' : 'Start Free Trial'}

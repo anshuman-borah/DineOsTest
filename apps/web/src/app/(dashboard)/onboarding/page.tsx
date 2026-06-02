@@ -136,13 +136,13 @@ export default function OnboardingPage() {
   };
 
   const handleFinish = () => {
-    router.replace('/dashboard');
+    router.replace('/executive');
   };
 
   const handleSkip = () => {
     // Allow skipping — just mark onboarded
     saveMutation.mutate({ settings: { onboarded: true } });
-    router.replace('/dashboard');
+    router.replace('/executive');
   };
 
   const isBusy = saveMutation.isPending;
