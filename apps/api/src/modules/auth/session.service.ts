@@ -76,6 +76,13 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
     return sessionId;
   }
 
+  // ── Check session exists (used by JWT strategy on every request) ──────────
+
+  async sessionExists(userId: string, sessionId: string): Promise<boolean> {
+    const exists = await this.redis.exists(this._key(userId, sessionId));
+    return exists === 1;
+  }
+
   // ── Validate on token refresh ─────────────────────────────────────────────
 
   async validateSession(userId: string, sessionId: string, refreshToken: string): Promise<boolean> {
@@ -169,4 +176,4 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
   private _key(userId: string, sessionId: string): string {
     return `session:${userId}:${sessionId}`;
   }
-}
+}//session

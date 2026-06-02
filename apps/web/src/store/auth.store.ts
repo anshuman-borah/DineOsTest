@@ -1,6 +1,8 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
+const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+
 interface AuthUser {
   id: string;
   email: string;
@@ -19,14 +21,14 @@ interface AuthState {
   tenantId: string | null;
   branchId: string | null;
   login: (payload: { accessToken: string; refreshToken: string; user?: AuthUser }) => void;
-  logout: () => void;
+  logout: () => Promise<void>;
   setTokens: (accessToken: string, refreshToken: string) => void;
   setBranch: (branchId: string | null) => void;
 }
 
 export const useAuthStore = create<AuthState>()(
   persist(
-    (set) => ({
+    (set, get) => ({
       user: null,
       accessToken: null,
       refreshToken: null,
@@ -42,8 +44,34 @@ export const useAuthStore = create<AuthState>()(
           branchId: payload.user?.role === 'owner' ? null : (payload.user?.branchId || null),
         }),
 
-      logout: () =>
-        set({ user: null, accessToken: null, refreshToken: null, tenantId: null, branchId: null }),
+      logout: async () => {
+        const { accessToken } = get();
+
+        // ── Call backend to revoke session in Redis ──────────────────
+        if (accessToken) {
+          try {
+            await fetch(`${API_URL}/api/v1/auth/sessions`, {
+              method: 'DELETE',
+              headers: {
+                'Authorization': `Bearer ${accessToken}`,
+                'Content-Type': 'application/json',
+              },
+            });
+          } catch (err) {
+            // Don't block logout if API call fails
+            console.warn('Failed to revoke session on server:', err);
+          }
+        }
+
+        // ── Clear frontend store ─────────────────────────────────────
+        set({
+          user: null,
+          accessToken: null,
+          refreshToken: null,
+          tenantId: null,
+          branchId: null,
+        });
+      },
 
       setTokens: (accessToken, refreshToken) => set({ accessToken, refreshToken }),
 
@@ -51,4 +79,4 @@ export const useAuthStore = create<AuthState>()(
     }),
     { name: 'dinestay-auth' },
   ),
-);
+);//auth.store.ts
