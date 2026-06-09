@@ -37,7 +37,8 @@ export class ShiftsService {
       throw new BadRequestException(`A ${deptLabel} shift is already open for this branch`);
     }
 
-    const prefix = department === ShiftDepartment.HOTEL ? 'HSH' : 'SH';
+    // ← RSH for restaurant, HSH for hotel
+    const prefix = department === ShiftDepartment.HOTEL ? 'HSH' : 'RSH';
 
     const shiftNumber = await this.db.transaction(async (em) => {
       const [{ lock_key }] = await em.query(
@@ -170,8 +171,8 @@ export class ShiftsService {
       FROM shifts s
       LEFT JOIN users u1 ON u1.id = s.opened_by::uuid
       LEFT JOIN users u2 ON u2.id = s.closed_by::uuid
-      WHERE s.branch_id = $1
-        AND s.tenant_id = $2
+      WHERE s.branch_id  = $1
+        AND s.tenant_id  = $2
         AND s.department = $3
     `;
 
@@ -230,74 +231,70 @@ export class ShiftsService {
   // ── Private helpers ──────────────────────────────────────────────────────────
 
   private async enrichShift(shift: Shift): Promise<any> {
-  const userIds = [shift.openedBy, shift.closedBy].filter(Boolean);
-  if (!userIds.length) return shift;
+    const userIds = [shift.openedBy, shift.closedBy].filter(Boolean);
+    if (!userIds.length) return shift;
 
-  const users: Array<{
-    id: string;
-    first_name: string;
-    last_name: string | null;
-    role: string;
-  }> = await this.db.query(
-    `SELECT id, first_name, last_name, role FROM users WHERE id = ANY($1::uuid[])`,
-    [userIds],
-  );
+    const users: Array<{
+      id: string;
+      first_name: string;
+      last_name: string | null;
+      role: string;
+    }> = await this.db.query(
+      `SELECT id, first_name, last_name, role FROM users WHERE id = ANY($1::uuid[])`,
+      [userIds],
+    );
 
-  const userMap      = new Map(users.map((u) => [u.id, u]));
-  const openedByUser = userMap.get(shift.openedBy);
-  const closedByUser = userMap.get(shift.closedBy);
+    const userMap      = new Map(users.map((u) => [u.id, u]));
+    const openedByUser = userMap.get(shift.openedBy);
+    const closedByUser = userMap.get(shift.closedBy);
 
-  return {
-    ...shift,
-    openedByUser: openedByUser
-      ? {
-          id:        openedByUser.id,
-          firstName: openedByUser.first_name,
-          lastName:  openedByUser.last_name,
-          role:      openedByUser.role,
-          fullName:  `${openedByUser.first_name} ${openedByUser.last_name || ''}`.trim(),
-        }
-      : null,
-    closedByUser: closedByUser
-      ? {
-          id:        closedByUser.id,
-          firstName: closedByUser.first_name,
-          lastName:  closedByUser.last_name,
-          role:      closedByUser.role,
-          fullName:  `${closedByUser.first_name} ${closedByUser.last_name || ''}`.trim(),
-        }
-      : null,
-  };
-}
+    return {
+      ...shift,
+      openedByUser: openedByUser ? {
+        id:        openedByUser.id,
+        firstName: openedByUser.first_name,
+        lastName:  openedByUser.last_name,
+        role:      openedByUser.role,
+        fullName:  `${openedByUser.first_name} ${openedByUser.last_name || ''}`.trim(),
+      } : null,
+      closedByUser: closedByUser ? {
+        id:        closedByUser.id,
+        firstName: closedByUser.first_name,
+        lastName:  closedByUser.last_name,
+        role:      closedByUser.role,
+        fullName:  `${closedByUser.first_name} ${closedByUser.last_name || ''}`.trim(),
+      } : null,
+    };
+  }
 
   private mapShiftRow(r: any) {
     return {
-      id:            r.id,
-      shiftNumber:   r.shift_number,
-      status:        r.status,
-      department:    r.department,
-      openingCash:   r.opening_cash,
-      closingCash:   r.closing_cash,
-      expectedCash:  r.expected_cash,
+      id:             r.id,
+      shiftNumber:    r.shift_number,
+      status:         r.status,
+      department:     r.department,
+      openingCash:    r.opening_cash,
+      closingCash:    r.closing_cash,
+      expectedCash:   r.expected_cash,
       cashDifference: r.cash_difference,
-      totalSales:    r.total_sales,
-      totalOrders:   r.total_orders,
-      cashSales:     r.cash_sales,
-      cardSales:     r.card_sales,
-      upiSales:      r.upi_sales,
-      walletSales:   r.wallet_sales,
-      creditSales:   r.credit_sales,
-      complimentary: r.complimentary,
-      totalRefund:   r.total_refund,
-      totalCgst:     r.total_cgst,
-      totalSgst:     r.total_sgst,
-      totalIgst:     r.total_igst,
-      notes:         r.notes,
-      openedAt:      r.opened_at,
-      closedAt:      r.closed_at,
-      createdAt:     r.created_at,
-      openedBy:      r.opened_by,
-      closedBy:      r.closed_by,
+      totalSales:     r.total_sales,
+      totalOrders:    r.total_orders,
+      cashSales:      r.cash_sales,
+      cardSales:      r.card_sales,
+      upiSales:       r.upi_sales,
+      walletSales:    r.wallet_sales,
+      creditSales:    r.credit_sales,
+      complimentary:  r.complimentary,
+      totalRefund:    r.total_refund,
+      totalCgst:      r.total_cgst,
+      totalSgst:      r.total_sgst,
+      totalIgst:      r.total_igst,
+      notes:          r.notes,
+      openedAt:       r.opened_at,
+      closedAt:       r.closed_at,
+      createdAt:      r.created_at,
+      openedBy:       r.opened_by,
+      closedBy:       r.closed_by,
       openedByUser: r.opened_first_name ? {
         firstName: r.opened_first_name,
         lastName:  r.opened_last_name,
