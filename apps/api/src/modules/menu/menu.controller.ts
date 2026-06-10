@@ -105,9 +105,9 @@ export class MenuController {
 
   @Delete('items/:id')
   @Roles('manager', 'owner')
-  @ApiOperation({ summary: 'Delete menu item' })
-  removeItem(@Param('id') id: string) {
-    return this.svc.removeItem(id);
+  @ApiOperation({ summary: 'Delete menu item (also removes image from storage)' })
+  removeItem(@Param('id') id: string, @TenantId() t: string) {
+    return this.svc.removeItem(id, t);
   }
 
   // ── Variations ─────────────────────────────────────────────────────────────

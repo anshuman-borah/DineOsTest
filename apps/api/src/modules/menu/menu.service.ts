@@ -5,6 +5,7 @@ import { MenuItem } from './entities/menu-item.entity';
 import { MenuItemVariation } from './entities/menu-item-variation.entity';
 import { Category } from './entities/category.entity';
 import { GstRate } from '../billing/entities/gst-rate.entity';
+import { StorageService } from '../storage/storage.service';
 
 function nullifyEmpty(value: any): string | null {
   if (value === '' || value === undefined || value === null) return null;
@@ -30,6 +31,7 @@ export class MenuService {
     private readonly catRepo: Repository<Category>,
     @InjectRepository(GstRate)
     private readonly gstRepo: Repository<GstRate>,
+    private readonly storageService: StorageService,
   ) {}
 
   // ── Categories ─────────────────────────────────────────────────────────────
@@ -90,7 +92,26 @@ export class MenuService {
   }
 
   async updateItem(id: string, tenantId: string, data: Partial<MenuItem>) {
-    await this.getItem(id, tenantId);
+    const oldItem = await this.getItem(id, tenantId);
+
+    // ── Image cleanup on update ───────────────────────────────────────────────
+    // Case 1: Image was replaced (new URL is different from old URL)
+    // Case 2: Image was removed (new imageUrl is empty/null, old had one)
+    const newImageUrl = (data as any).imageUrl ?? null;
+    const oldImageUrl = oldItem.imageUrl ?? null;
+    const imageChanged =
+      newImageUrl !== undefined &&          // imageUrl key was explicitly sent
+      newImageUrl !== oldImageUrl;          // and it's actually different
+
+    if (imageChanged && oldImageUrl) {
+      const key = this.extractStorageKey(oldImageUrl);
+      if (key) {
+        await this.storageService.delete(key).catch(() => {
+          // Don't fail the update if old image cleanup fails
+        });
+      }
+    }
+
     const sanitised: any = {
       ...data,
       categoryId: nullifyEmpty(data.categoryId),
@@ -100,8 +121,51 @@ export class MenuService {
     return this.getItem(id, tenantId);
   }
 
-  removeItem(id: string) {
+  async removeItem(id: string, tenantId: string) {
+    // Fetch the item first so we can clean up its image from storage
+    const item = await this.itemRepo.findOne({ where: { id, tenantId } });
+    if (!item) throw new NotFoundException('Menu item not found');
+
+    // Delete the image file from storage if one exists
+    if (item.imageUrl) {
+      const key = this.extractStorageKey(item.imageUrl);
+      if (key) {
+        await this.storageService.delete(key).catch(() => {
+          // Log but don't fail the delete if image cleanup fails
+          // (file may have already been removed manually)
+        });
+      }
+    }
+
     return this.itemRepo.update(id, { isActive: false });
+  }
+
+  // ── Helpers ────────────────────────────────────────────────────────────────
+
+  /**
+   * Extracts the storage key from a stored imageUrl.
+   * Handles both:
+   *   - Relative paths:  /static/tenantId/menu-items/abc.webp  → tenantId/menu-items/abc.webp
+   *   - Full URLs:       http://localhost:4000/static/tenantId/menu-items/abc.webp → same
+   *   - S3 URLs:        https://bucket.s3.amazonaws.com/tenantId/menu-items/abc.webp → same
+   */
+  private extractStorageKey(imageUrl: string): string | null {
+    if (!imageUrl) return null;
+    try {
+      // Handle full URLs — extract just the path part
+      let path = imageUrl;
+      if (imageUrl.startsWith('http')) {
+        path = new URL(imageUrl).pathname;
+      }
+      // Strip the /static/ prefix used by local storage
+      if (path.startsWith('/static/')) {
+        return path.replace('/static/', '');
+      }
+      // For S3 URLs the pathname IS the key (after stripping leading slash)
+      return path.startsWith('/') ? path.slice(1) : path;
+    } catch {
+      return null;
+    }
   }
 
   // ── Variations ─────────────────────────────────────────────────────────────

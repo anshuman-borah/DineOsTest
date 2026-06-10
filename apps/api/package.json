@@ -37,6 +37,7 @@
     "@nestjs/websockets": "^10.4.22",
     "@sentry/nestjs": "^10.52.0",
     "@sentry/profiling-node": "^10.52.0",
+    "@types/sharp": "^0.31.1",
     "bcryptjs": "^2.4.3",
     "cache-manager": "^5.5.0",
     "cache-manager-redis-yet": "^4.1.2",
@@ -55,6 +56,7 @@
     "razorpay": "^2.9.2",
     "reflect-metadata": "^0.1.13",
     "rxjs": "^7.8.2",
+    "sharp": "^0.34.5",
     "socket.io": "^4.7.5",
     "typeorm": "^0.3.20",
     "uuid": "^9.0.1",
@@ -84,7 +86,11 @@
     "typescript": "^5.4.5"
   },
   "jest": {
-    "moduleFileExtensions": ["js", "json", "ts"],
+    "moduleFileExtensions": [
+      "js",
+      "json",
+      "ts"
+    ],
     "rootDir": "src",
     "testRegex": ".*\\.spec\\.ts$",
     "transform": {
