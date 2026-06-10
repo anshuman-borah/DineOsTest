@@ -14,7 +14,6 @@ import { KdsStatus } from '../orders/entities/order-item.entity';
 export class KdsController {
   constructor(private readonly svc: KdsService) {}
 
-  // Kitchen display — kitchen staff, cashiers, managers and above can view
   @Get('pending')
   @Roles('kitchen', 'cashier', 'waiter', 'manager', 'owner')
   @ApiOperation({ summary: 'Pending KDS items for kitchen display' })
@@ -25,7 +24,6 @@ export class KdsController {
     return this.svc.getPendingItems(branchId, tenantId);
   }
 
-  // Status updates — kitchen staff and above
   @Patch('items/:id/status')
   @Roles('kitchen', 'cashier', 'manager', 'owner')
   @ApiOperation({ summary: 'Update KDS item status' })
@@ -39,15 +37,24 @@ export class KdsController {
 
   @Patch('items/:id/bump')
   @Roles('kitchen', 'cashier', 'manager', 'owner')
-  @ApiOperation({ summary: 'Mark item as served and remove from display' })
+  @ApiOperation({ summary: 'Bump single item — remove from KDS display' })
   bump(@Param('id') id: string, @TenantId() tenantId: string) {
     return this.svc.bumpItem(id, tenantId);
   }
 
-  // Recall — manager / owner only (re-opens a bumped item)
+  @Patch('orders/:orderId/bump')
+  @Roles('kitchen', 'cashier', 'waiter', 'manager', 'owner')
+  @ApiOperation({ summary: 'Bump all items in an order (waiter served / order complete)' })
+  bumpOrder(
+    @Param('orderId') orderId: string,
+    @TenantId() tenantId: string,
+  ) {
+    return this.svc.bumpOrderItems(orderId, tenantId);
+  }
+
   @Patch('items/:id/recall')
   @Roles('manager', 'owner')
-  @ApiOperation({ summary: 'Recall a bumped item (manager/owner only)' })
+  @ApiOperation({ summary: 'Recall a bumped item back to kitchen (manager/owner only)' })
   recall(@Param('id') id: string, @TenantId() tenantId: string) {
     return this.svc.recallItem(id, tenantId);
   }

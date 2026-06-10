@@ -32,11 +32,50 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         <Providers>
           {children}
           <Toaster
-            position="top-right"
+            position="top-center"
+            reverseOrder={false}
+            gutter={10}
+            containerStyle={{
+              top: 20,
+            }}
             toastOptions={{
-              className: 'bg-white text-slate-900 border border-slate-200 dark:bg-slate-800 dark:text-slate-100 dark:border-slate-700',
-              success: { iconTheme: { primary: '#10b981', secondary: 'currentColor' } },
-              error: { iconTheme: { primary: '#ef4444', secondary: 'currentColor' } },
+              duration: 2500,
+              style: {
+                maxWidth: '420px',
+                padding: '12px 20px',
+                borderRadius: '16px',
+                fontSize: '14px',
+                fontWeight: 500,
+                boxShadow: '0 20px 60px -15px rgba(0,0,0,0.3), 0 0 0 1px rgba(255,255,255,0.05)',
+                backdropFilter: 'blur(12px)',
+              },
+              className: 'bg-white/95 text-slate-900 border border-slate-200/80 dark:bg-slate-800/95 dark:text-slate-100 dark:border-slate-700/80',
+              success: {
+                duration: 2000,
+                iconTheme: {
+                  primary: '#10b981',
+                  secondary: '#ffffff',
+                },
+                style: {
+                  background: 'rgba(16, 185, 129, 0.08)',
+                  border: '1px solid rgba(16, 185, 129, 0.2)',
+                  color: '#065f46',
+                },
+                className: 'dark:!bg-emerald-900/30 dark:!border-emerald-500/30 dark:!text-emerald-200',
+              },
+              error: {
+                duration: 4000,
+                iconTheme: {
+                  primary: '#ef4444',
+                  secondary: '#ffffff',
+                },
+                style: {
+                  background: 'rgba(239, 68, 68, 0.08)',
+                  border: '1px solid rgba(239, 68, 68, 0.2)',
+                  color: '#991b1b',
+                },
+                className: 'dark:!bg-red-900/30 dark:!border-red-500/30 dark:!text-red-200',
+              },
             }}
           />
         </Providers>

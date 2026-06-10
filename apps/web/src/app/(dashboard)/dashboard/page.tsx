@@ -24,6 +24,17 @@ const ORDER_STATUS_COLOR: Record<string, string> = {
   served:    'text-slate-400 bg-slate-800',
 };
 
+// ← Order type display helper
+function OrderTypeLabel({ type }: { type?: string }) {
+  switch (type) {
+    case 'dine_in':      return <span className="badge-slate text-xs">🍽 Dine In</span>;
+    case 'takeaway':     return <span className="badge-slate text-xs">🥡 Takeaway</span>;
+    case 'delivery':     return <span className="badge-slate text-xs">🛵 Delivery</span>;
+    case 'room_service': return <span className="badge-slate text-xs">🛎 Room Service</span>;
+    default:             return <span className="badge-slate text-xs capitalize">{type?.replace('_', ' ') || '—'}</span>;
+  }
+}
+
 // ─── Open Shift Modal ──────────────────────────────────────────────────────────
 function OpenShiftModal({ onClose, onOpened }: { onClose: () => void; onOpened: () => void }) {
   const [openingCash, setOpeningCash] = useState('');
@@ -112,14 +123,8 @@ function CloseShiftModal({
 
 // ─── Shift Widget ──────────────────────────────────────────────────────────────
 function ShiftWidget({
-  shift,
-  onOpenShift,
-  onCloseShift,
-}: {
-  shift: any;
-  onOpenShift: () => void;
-  onCloseShift: () => void;
-}) {
+  shift, onOpenShift, onCloseShift,
+}: { shift: any; onOpenShift: () => void; onCloseShift: () => void }) {
   if (shift) {
     return (
       <div className="flex items-center gap-3 bg-emerald-50 dark:bg-emerald-900/20 border border-emerald-300 dark:border-emerald-700 rounded-xl px-4 py-2.5">
@@ -191,7 +196,6 @@ export default function DashboardPage() {
     refetchInterval: 20_000,
   });
 
-  // ← Controller returns shift directly — no wrapper
   const { data: shift, refetch: refetchShift } = useQuery({
     queryKey: ['current-shift', branchId],
     queryFn:  () => apiFetch('/api/v1/shifts/current').then((r) => r.data).catch(() => null),
@@ -199,9 +203,9 @@ export default function DashboardPage() {
   });
 
   const stats = [
-    { label: "Today's Sales",    value: `₹${Number(summary?.todaySales    || 0).toLocaleString('en-IN')}`, icon: IndianRupee,  color: 'text-amber-600 dark:text-amber-400' },
-    { label: "Today's Bills",    value: summary?.todayBills    || 0,                                         icon: ShoppingBag, color: 'text-blue-400' },
-    { label: 'Active Orders',    value: summary?.pendingOrders || 0,                                         icon: Clock,       color: 'text-purple-400' },
+    { label: "Today's Sales",    value: `₹${Number(summary?.todaySales    || 0).toLocaleString('en-IN')}`, icon: IndianRupee,   color: 'text-amber-600 dark:text-amber-400' },
+    { label: "Today's Bills",    value: summary?.todayBills    || 0,                                         icon: ShoppingBag,  color: 'text-blue-400' },
+    { label: 'Active Orders',    value: summary?.pendingOrders || 0,                                         icon: Clock,        color: 'text-purple-400' },
     { label: 'Low Stock Alerts', value: summary?.lowStockAlerts || 0,                                        icon: AlertTriangle, color: 'text-red-600 dark:text-red-400' },
   ];
 
@@ -214,8 +218,6 @@ export default function DashboardPage() {
           <h1 className="text-xl font-bold text-slate-900 dark:text-white">Dashboard</h1>
           <p className="text-sm text-slate-500">{dayjs().format('dddd, D MMMM YYYY')}</p>
         </div>
-
-        {/* ← Compact shift widget with live info */}
         <ShiftWidget
           shift={shift}
           onOpenShift={() => setOpenShiftModal(true)}
@@ -288,7 +290,6 @@ export default function DashboardPage() {
 
       {/* Order Statistics + Revenue Leakage */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-
         <div className="card">
           <div className="flex items-center justify-between mb-4">
             <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300">Order Statistics — Today</h2>
@@ -349,7 +350,6 @@ export default function DashboardPage() {
             )}
           </div>
         </div>
-
       </div>
 
       {/* Active Orders */}
@@ -388,7 +388,8 @@ export default function DashboardPage() {
                     <td className="td font-medium text-amber-600 dark:text-amber-400">{order.orderNumber}</td>
                     <td className="td">{order.table?.name || <span className="text-slate-500 italic">—</span>}</td>
                     <td className="td">
-                      <span className="badge-slate capitalize text-xs">{order.orderType?.replace('_', ' ')}</span>
+                      {/* ← Fixed: shows emoji + proper label */}
+                      <OrderTypeLabel type={order.type} />
                     </td>
                     <td className="td text-slate-500">{order.itemCount ?? order.items?.length ?? '—'}</td>
                     <td className="td text-right font-bold">₹{Number(order.grandTotal || 0).toFixed(2)}</td>
