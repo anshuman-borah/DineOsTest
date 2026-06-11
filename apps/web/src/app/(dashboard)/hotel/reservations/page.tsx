@@ -19,6 +19,7 @@ import {
 import { cn } from '@/lib/utils';
 import { api, apiFetch } from '@/lib/api';
 import { printHtml } from '@/lib/printer';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import dayjs from 'dayjs';
 import Link from 'next/link';
 
@@ -345,12 +346,16 @@ function NewReservationDrawer({ onClose, onCreated }: { onClose: () => void; onC
 
 // ─── Checkout Dialog (Real-world flow: review folio → collect payment → generate bill) ────
 
+const HOTEL_RAZORPAY_METHODS = ['card', 'upi'] as const;
+
 function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reservation; onClose: () => void; onDone: () => void }) {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi' | 'wallet'>('card');
   const [amountPaid, setAmountPaid] = useState('');
   const [checkoutComplete, setCheckoutComplete] = useState(false);
   const [billResult, setBillResult] = useState<any>(null);
   const [isPrinting, setIsPrinting] = useState(false);
+  const [isRazorpayPending, setIsRazorpayPending] = useState(false);
+  const isOnline = useOnlineStatus();
 
   // ── Fetch active hotel shift ───────────────────────────────────────────────
   const { data: hotelShift } = useQuery<{ id: string } | null>({
@@ -389,10 +394,66 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
   const checkoutMutation = useMutation({
     mutationFn: async () => {
       const paid = parseFloat(amountPaid) || 0;
-      // 1. Perform checkout (marks room as cleaning, creates HK task)
+
+      // For card/upi: trigger Razorpay first (online only)
+      if ((HOTEL_RAZORPAY_METHODS as readonly string[]).includes(paymentMethod) && isOnline) {
+        return new Promise<any>((resolve, reject) => {
+          setIsRazorpayPending(true);
+
+          api.post('/api/v1/billing/razorpay/create-order', { amount: paid })
+            .then((res) => {
+              const order = res.data?.data || res.data;
+              const options = {
+                key: order.keyId,
+                amount: order.amount,
+                currency: order.currency,
+                name: 'Hotel Checkout',
+                description: `Room ${reservation.room?.roomNumber} — ${reservation.primaryGuest?.name}`,
+                order_id: order.orderId,
+                handler: async (response: any) => {
+                  try {
+                    // Verify signature
+                    await api.post('/api/v1/billing/razorpay/verify-payment', {
+                      razorpayOrderId: response.razorpay_order_id,
+                      razorpayPaymentId: response.razorpay_payment_id,
+                      razorpaySignature: response.razorpay_signature,
+                    });
+                    // Checkout + generate bill
+                    await api.post(`/api/v1/hotel/reservations/${reservation.id}/check-out`);
+                    const billRes = await api.post(`/api/v1/hotel/reservations/${reservation.id}/bill`, {
+                      paymentMethod,
+                      amountPaid: paid,
+                      shiftId: hotelShift?.id || undefined,
+                      razorpayPaymentId: response.razorpay_payment_id,
+                    });
+                    resolve(billRes.data?.data ?? billRes.data);
+                  } catch (e) {
+                    reject(e);
+                  } finally {
+                    setIsRazorpayPending(false);
+                  }
+                },
+                modal: {
+                  ondismiss: () => {
+                    setIsRazorpayPending(false);
+                    reject(new Error('Payment was cancelled.'));
+                  },
+                },
+                theme: { color: '#f59e0b' },
+              };
+              const rzp = new (window as any).Razorpay(options);
+              rzp.on('payment.failed', (r: any) => {
+                setIsRazorpayPending(false);
+                reject(new Error(r.error?.description || 'Payment failed'));
+              });
+              rzp.open();
+            })
+            .catch((e) => { setIsRazorpayPending(false); reject(e); });
+        });
+      }
+
+      // Cash / Wallet — direct flow
       await api.post(`/api/v1/hotel/reservations/${reservation.id}/check-out`);
-      // 2. Generate the final bill with payment collected
-      //    Pass shiftId so the backend can link payment to the shift
       const billRes = await api.post(`/api/v1/hotel/reservations/${reservation.id}/bill`, {
         paymentMethod,
         amountPaid: paid,
@@ -569,20 +630,32 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
           <div className="space-y-3">
             <div className="text-xs font-semibold text-slate-900 dark:text-slate-400">Collect Payment</div>
             <div className="grid grid-cols-4 gap-1.5">
-              {(['cash', 'card', 'upi', 'wallet'] as const).map((m) => (
-                <button
-                  key={m}
-                  onClick={() => setPaymentMethod(m)}
-                  className={cn(
-                    'py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide border transition-colors',
-                    paymentMethod === m
-                      ? 'bg-amber-200 dark:bg-amber-500/20 border-amber-400 dark:border-amber-500/50 text-amber-600 dark:text-amber-400'
-                      : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-500 hover:border-slate-300 dark:border-slate-600',
-                  )}
-                >
-                  {m}
-                </button>
-              ))}
+              {(['cash', 'card', 'upi', 'wallet'] as const).map((m) => {
+                const isBlocked = !isOnline && (HOTEL_RAZORPAY_METHODS as readonly string[]).includes(m);
+                return (
+                  <button
+                    key={m}
+                    onClick={() => {
+                      if (isBlocked) { toast.error(`${m.toUpperCase()} requires internet. Use Cash.`); return; }
+                      setPaymentMethod(m);
+                    }}
+                    disabled={isBlocked}
+                    className={cn(
+                      'py-1.5 rounded-lg text-[10px] font-semibold uppercase tracking-wide border transition-colors relative',
+                      isBlocked
+                        ? 'bg-slate-100 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
+                        : paymentMethod === m
+                        ? 'bg-amber-200 dark:bg-amber-500/20 border-amber-400 dark:border-amber-500/50 text-amber-600 dark:text-amber-400'
+                        : 'bg-slate-50 dark:bg-slate-800 border-slate-300 dark:border-slate-700 text-slate-900 dark:text-slate-500 hover:border-slate-300 dark:border-slate-600',
+                    )}
+                  >
+                    {m}
+                    {(HOTEL_RAZORPAY_METHODS as readonly string[]).includes(m) && isOnline && (
+                      <span className="block text-[7px] text-emerald-600 dark:text-emerald-500 font-semibold normal-case tracking-normal">Razorpay</span>
+                    )}
+                  </button>
+                );
+              })}
             </div>
 
             {/* Cash payment shift warning */}
@@ -624,15 +697,17 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
           {/* Confirm */}
           <button
             onClick={() => checkoutMutation.mutate()}
-            disabled={checkoutMutation.isPending || folioLoading || isCashBlocked}
+            disabled={checkoutMutation.isPending || isRazorpayPending || folioLoading || isCashBlocked}
             className="btn-primary w-full flex items-center justify-center gap-2 py-2.5 disabled:opacity-50"
           >
-            {checkoutMutation.isPending ? (
-              <><Loader2 size={14} className="animate-spin" /> Processing…</>
+            {(checkoutMutation.isPending || isRazorpayPending) ? (
+              <><Loader2 size={14} className="animate-spin" /> {isRazorpayPending ? 'Waiting for payment...' : 'Processing…'}</>
             ) : isCashBlocked ? (
               <>⚠ Open Shift to Accept Cash</>
+            ) : (HOTEL_RAZORPAY_METHODS as readonly string[]).includes(paymentMethod) && isOnline ? (
+              <><LogOut size={14} /> Pay via Razorpay &amp; Checkout</>
             ) : (
-              <><LogOut size={14} /> Confirm Checkout & Generate Bill</>
+              <><LogOut size={14} /> Confirm Checkout &amp; Generate Bill</>
             )}
           </button>
             </>
