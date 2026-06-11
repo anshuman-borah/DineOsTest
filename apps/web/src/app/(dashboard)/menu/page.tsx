@@ -62,10 +62,11 @@ async function uploadMenuImage(file: File): Promise<string> {
 
 function normaliseImageUrl(url: string): string {
   if (!url) return '';
-  try {
-    const parsed = new URL(url);
-    if (parsed.pathname.startsWith('/static/')) return parsed.pathname;
-  } catch { /* already relative */ }
+  // Full URL (Cloudinary CDN, or http://localhost:4000/static/...) → use as-is
+  if (url.startsWith('http')) return url;
+  // Relative /static/... path → prefix with API base URL
+  const apiBase = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:4000';
+  if (url.startsWith('/static/')) return `${apiBase}${url}`;
   return url;
 }
 
@@ -93,7 +94,9 @@ function ImagePicker({ value, onChange }: { value: string; onChange: (url: strin
       <label className="label">Item Image</label>
       {value ? (
         <div className="relative w-full h-40 rounded-xl overflow-hidden border border-slate-300 dark:border-slate-700 group">
-          <Image src={normaliseImageUrl(value)} alt="Menu item" fill className="object-cover" unoptimized
+          {/* Plain <img> works with any URL (Cloudinary, local, etc.) without Next.js domain config */}
+          <img src={normaliseImageUrl(value)} alt="Menu item"
+            className="w-full h-full object-cover"
             onError={(e) => { (e.target as HTMLImageElement).style.display = 'none'; }} />
           <button type="button" onClick={() => onChange('')}
             className="absolute top-2 right-2 p-1.5 rounded-full bg-white dark:bg-slate-900/80 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:text-white opacity-0 group-hover:opacity-100 transition-opacity">

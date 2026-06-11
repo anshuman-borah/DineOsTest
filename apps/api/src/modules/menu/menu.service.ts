@@ -153,17 +153,20 @@ export class MenuService {
   private extractStorageKey(imageUrl: string): string | null {
     if (!imageUrl) return null;
     try {
-      // Handle full URLs — extract just the path part
-      let path = imageUrl;
       if (imageUrl.startsWith('http')) {
-        path = new URL(imageUrl).pathname;
+        // Local API URL (http://localhost:4000/static/tenantId/...) → strip to key
+        if (imageUrl.includes('/static/')) {
+          const pathname = new URL(imageUrl).pathname;
+          return pathname.replace('/static/', '');
+        }
+        // Cloudinary or S3 full URL → return as-is so StorageService can parse it
+        return imageUrl;
       }
-      // Strip the /static/ prefix used by local storage
-      if (path.startsWith('/static/')) {
-        return path.replace('/static/', '');
+      // Relative path: /static/tenantId/folder/file.webp
+      if (imageUrl.startsWith('/static/')) {
+        return imageUrl.replace('/static/', '');
       }
-      // For S3 URLs the pathname IS the key (after stripping leading slash)
-      return path.startsWith('/') ? path.slice(1) : path;
+      return imageUrl;
     } catch {
       return null;
     }
