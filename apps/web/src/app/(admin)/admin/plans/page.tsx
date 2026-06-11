@@ -89,7 +89,7 @@ function PlanModal({ plan, onClose }: { plan?: Plan; onClose: () => void }) {
         {err && <p className="text-xs text-red-600 dark:text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</p>}
 
         <div className="space-y-4">
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="label">Plan Name *</label>
               <input className="input-field w-full" placeholder="e.g. Premium" value={form.name} onChange={e => set('name', e.target.value)} />
@@ -105,7 +105,7 @@ function PlanModal({ plan, onClose }: { plan?: Plan; onClose: () => void }) {
             <input className="input-field w-full" placeholder="Brief description of the plan" value={form.description} onChange={e => set('description', e.target.value)} />
           </div>
 
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="label">Monthly Price (₹) *</label>
               <input type="number" className="input-field w-full" value={form.priceMonthly} onChange={e => set('priceMonthly', e.target.value)} />
@@ -116,7 +116,7 @@ function PlanModal({ plan, onClose }: { plan?: Plan; onClose: () => void }) {
             </div>
           </div>
 
-          <div className="grid grid-cols-3 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
             <div className="space-y-1">
               <label className="label">Max Branches</label>
               <input type="number" className="input-field w-full" value={form.maxBranches} onChange={e => set('maxBranches', e.target.value)} />

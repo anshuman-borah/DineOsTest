@@ -221,22 +221,22 @@ export default function SettingsPage() {
   if (!form) return null;
 
   return (
-    <div className="flex h-full">
+    <div className="flex flex-col md:flex-row h-full">
       {/* Sidebar */}
-      <aside className="w-52 flex-shrink-0 border-r border-slate-200 dark:border-slate-800 p-3 space-y-1">
-        <div className="text-xs font-semibold text-slate-900 dark:text-slate-500 uppercase mb-3 px-2">Settings</div>
+      <aside className="w-full md:w-52 flex-shrink-0 border-b md:border-b-0 md:border-r border-slate-200 dark:border-slate-800 p-3 flex md:block overflow-x-auto md:space-y-1 gap-2 scrollbar-none">
+        <div className="hidden md:block text-xs font-semibold text-slate-900 dark:text-slate-500 uppercase mb-3 px-2">Settings</div>
         {allowedTabs.map(({ id, label, icon: Icon }) => (
           <button
             key={id}
             onClick={() => setTab(id)}
-            className={cn('sidebar-link w-full', tab === id && 'sidebar-link-active')}
+            className={cn('sidebar-link w-auto md:w-full flex-shrink-0 whitespace-nowrap', tab === id && 'sidebar-link-active')}
           >
             <Icon size={15} /> {label}
           </button>
         ))}
       </aside>
 
-      <div className="flex-1 overflow-y-auto p-6">
+      <div className="flex-1 overflow-y-auto p-4 md:p-6">
 
         {/* ── Business Info ──────────────────────────────────────────────────── */}
         {tab === 'business' && (
@@ -276,7 +276,7 @@ export default function SettingsPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div className="col-span-2">
                 <label className="label">Business Name</label>
                 <input className="input" value={form.name || ''} onChange={(e) => setForm({ ...form, name: e.target.value })} />
@@ -325,7 +325,7 @@ export default function SettingsPage() {
         {tab === 'gst' && (
           <div className="max-w-lg space-y-4">
             <h2 className="text-lg font-bold text-slate-900 dark:text-white">GST & Tax Settings</h2>
-            <div className="grid grid-cols-2 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <label className="label">GSTIN</label>
                 <input
@@ -426,7 +426,7 @@ export default function SettingsPage() {
             </div>
 
             {/* Plan cards */}
-            <div className="grid grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
               {plans?.map((plan: any) => (
                 <div
                   key={plan.id}
@@ -575,7 +575,7 @@ export default function SettingsPage() {
 
             <div className="card space-y-3">
               <h3 className="font-medium text-slate-900 dark:text-white text-sm">Notification channels</h3>
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="label">Notification email</label>
                   <input

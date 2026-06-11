@@ -811,7 +811,7 @@ export default function PosPage() {
         </div>
 
         {/* ── Items grid ──────────────────────────────────────────────────── */}
-        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-3 xl:grid-cols-4 gap-3 content-start">
+        <div className="flex-1 overflow-y-auto p-4 grid grid-cols-2 sm:grid-cols-3 xl:grid-cols-4 gap-3 content-start">
           {isLoadingItems ? (
             <div className="col-span-full"><MenuGridSkeleton count={8} /></div>
           ) : filteredItems?.length === 0 ? (

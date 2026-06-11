@@ -148,7 +148,7 @@ export default function WaiterDashboardPage() {
       </div>
 
       {/* Status Summary */}
-      <div className="grid grid-cols-3 gap-3">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
         {/* Placed */}
         <div className="rounded-xl border p-4 bg-gradient-to-br from-blue-50 to-blue-100/50 dark:from-blue-950/30 dark:to-blue-900/20 border-blue-200 dark:border-blue-800/50 flex items-center gap-3">
           <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/50 flex items-center justify-center flex-shrink-0">
@@ -334,7 +334,7 @@ export default function WaiterDashboardPage() {
         <h2 className="text-lg font-semibold text-slate-900 dark:text-white mb-3">
           Quick Actions
         </h2>
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
           <Link
             href="/pos"
             className="group card hover:border-amber-500 transition-all cursor-pointer flex items-center gap-4 p-5"

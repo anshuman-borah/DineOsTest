@@ -225,7 +225,7 @@ export default function HotelReportsPage() {
             {/* ════════ REVENUE TAB ════════ */}
             {!loading && tab === 'revenue' && (
                 <div className="space-y-4">
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         {[
                             { label: 'Total Bookings', value: totalBookings.toLocaleString('en-IN') },
                             { label: 'Total Revenue', value: fmt(totalRevenue) },
@@ -303,7 +303,7 @@ export default function HotelReportsPage() {
             {/* ════════ BOOKINGS TAB ════════ */}
             {!loading && tab === 'bookings' && (
                 <div className="space-y-4">
-                    <div className="grid grid-cols-4 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                         {[
                             { label: 'Total Bookings', value: bookingsReport?.length || 0 },
                             {
@@ -379,7 +379,7 @@ export default function HotelReportsPage() {
                                         {expandedBooking === booking.booking_id && (
                                             <tr className="bg-slate-50 dark:bg-slate-800/30">
                                                 <td colSpan={8} className="px-6 py-4">
-                                                    <div className="grid grid-cols-4 gap-4 text-sm">
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 text-sm">
                                                         <div>
                                                             <div className="text-slate-900 dark:text-slate-500 text-xs mb-1">Guest Email</div>
                                                             <div className="font-medium">{booking.guest_email || '—'}</div>
@@ -420,7 +420,7 @@ export default function HotelReportsPage() {
                 <div className="space-y-4">
                     {/* Occupancy Summary Card - Most Important for Hotel Owners */}
                     {occupancySummary && (
-                        <div className="grid grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             {[
                                 { label: 'Occupancy Today', value: `${occupancySummary.occupancy_today || 0}%`, color: 'text-emerald-600' },
                                 { label: 'Available Rooms', value: occupancySummary.available_rooms || 0, color: 'text-blue-600' },
@@ -435,7 +435,7 @@ export default function HotelReportsPage() {
                         </div>
                     )}
 
-                    <div className="grid grid-cols-3 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                         {[
                             { label: 'Total Rooms', value: roomsReport?.length || 0 },
                             { label: 'Avg Occupancy', value: `${avgOccupancy}%` },
@@ -513,7 +513,7 @@ export default function HotelReportsPage() {
 
             {/* ════════ PAYMENTS TAB ════════ */}
             {!loading && tab === 'payments' && (
-                <div className="grid grid-cols-2 gap-6">
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                     <div className="card">
                         <h2 className="text-sm font-semibold text-slate-600 dark:text-slate-300 mb-4">Payment Mix</h2>
                         <ResponsiveContainer width="100%" height={220}>
@@ -655,7 +655,7 @@ export default function HotelReportsPage() {
             {!loading && tab === 'frontdesk' && (
                 <div className="space-y-4">
                     {frontdeskReport?.length > 0 && (
-                        <div className="grid grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                             {[
                                 { label: 'Staff Members', value: frontdeskReport.length },
                                 {

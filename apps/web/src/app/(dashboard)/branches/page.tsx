@@ -47,7 +47,7 @@ function BranchForm({ editBranch, onClose, onSaved }: { editBranch?: any; onClos
 
         {err && <p className="text-xs text-red-600 dark:text-red-400 bg-red-500/10 border border-red-500/20 rounded-lg px-3 py-2">{err}</p>}
 
-        <div className="grid grid-cols-2 gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div className="col-span-2">
             <label className="label">Branch Name *</label>
             <input className="input" placeholder="Main Branch" value={form.name} onChange={e => set('name', e.target.value)} />

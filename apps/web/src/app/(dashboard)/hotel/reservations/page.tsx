@@ -185,7 +185,7 @@ function NewReservationDrawer({ onClose, onCreated }: { onClose: () => void; onC
         <div className="flex-1 overflow-y-auto p-5 space-y-5">
 
           {/* Dates */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="label">Check-in Date</label>
               <input type="date" value={form.checkInDate} onChange={(e) => setForm((f) => ({ ...f, checkInDate: e.target.value }))} className="input text-sm" min={new Date().toISOString().split('T')[0]} />
@@ -286,7 +286,7 @@ function NewReservationDrawer({ onClose, onCreated }: { onClose: () => void; onC
           </div>
 
           {/* Occupancy */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="label">Adults</label>
               <input type="number" min={1} max={10} value={form.numAdults} onChange={(e) => setForm((f) => ({ ...f, numAdults: Number(e.target.value) }))} className="input text-sm" />
@@ -298,7 +298,7 @@ function NewReservationDrawer({ onClose, onCreated }: { onClose: () => void; onC
           </div>
 
           {/* Source + advance */}
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="label">Booking Source</label>
               <select value={form.source} onChange={(e) => setForm((f) => ({ ...f, source: e.target.value }))} className="input text-sm">
@@ -558,7 +558,7 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
                 </div>
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <button
                   onClick={handlePrintBill}
                   disabled={isPrinting}
@@ -788,7 +788,7 @@ function FolioDrawer({ reservation, onClose }: { reservation: Reservation; onClo
                 <div className="space-y-2 border-t border-slate-200 dark:border-slate-800 pt-4">
                   <div className="text-xs font-semibold text-slate-900 dark:text-slate-400">Add Charge</div>
                   <input type="text" placeholder="Description" value={addForm.description} onChange={(e) => setAddForm((f) => ({ ...f, description: e.target.value }))} className="input text-xs" />
-                  <div className="grid grid-cols-2 gap-2">
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
                     <input type="number" placeholder="Amount (₹)" value={addForm.amount} onChange={(e) => setAddForm((f) => ({ ...f, amount: e.target.value }))} className="input text-xs" />
                     <select value={addForm.chargeType} onChange={(e) => setAddForm((f) => ({ ...f, chargeType: e.target.value }))} className="input text-xs">
                       <option value="restaurant">Restaurant</option>

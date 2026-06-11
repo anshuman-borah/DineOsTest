@@ -92,7 +92,7 @@ function AddBusinessModal({ onClose }: { onClose: () => void }) {
             <label className="label">Business Name *</label>
             <input className="input-field w-full" placeholder="e.g. Spice Garden Restaurant" value={form.name} onChange={e => set('name', e.target.value)} />
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="label">Email *</label>
               <input className="input-field w-full" type="email" placeholder="owner@business.com" value={form.email} onChange={e => set('email', e.target.value)} />
@@ -102,7 +102,7 @@ function AddBusinessModal({ onClose }: { onClose: () => void }) {
               <input className="input-field w-full" placeholder="+91 98765 43210" value={form.phone} onChange={e => set('phone', e.target.value)} />
             </div>
           </div>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="label">Business Type</label>
               <select className="input-field w-full" value={form.businessType} onChange={e => set('businessType', e.target.value)}>
@@ -127,7 +127,7 @@ function AddBusinessModal({ onClose }: { onClose: () => void }) {
           <p className="text-xs font-semibold text-slate-900 dark:text-slate-500 uppercase tracking-wider">
             Owner Account <span className="text-slate-600 font-normal normal-case">(optional)</span>
           </p>
-          <div className="grid grid-cols-2 gap-3">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="label">Owner Name</label>
               <input className="input-field w-full" placeholder="Full name" value={form.ownerName} onChange={e => set('ownerName', e.target.value)} />
