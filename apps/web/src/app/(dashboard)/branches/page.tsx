@@ -10,19 +10,17 @@ import { cn } from '@/lib/utils';
 const BRANCH_TYPES = [
   { value: 'restaurant', label: '🍽️ Restaurant' },
   { value: 'hotel',      label: '🏨 Hotel' },
-  { value: 'cafe',       label: '☕ Café' },
-  { value: 'bakery',     label: '🥐 Bakery' },
-  { value: 'cloud_kitchen', label: '📦 Cloud Kitchen' },
+  { value: 'hotel_and_restaurant', label: '🏨 & 🍽️ Hotel & Restaurant (Both)' },
 ];
 
-const EMPTY_FORM = { name: '', code: '', type: 'restaurant', address: '', gstin: '', phone: '' };
+const EMPTY_FORM = { name: '', code: '', type: 'restaurant', addressLine1: '', gstin: '', phone: '' };
 
 function BranchForm({ editBranch, onClose, onSaved }: { editBranch?: any; onClose: () => void; onSaved: () => void }) {
   const [form, setForm] = useState(editBranch ? {
     name: editBranch.name,
     code: editBranch.code,
     type: editBranch.type || 'restaurant',
-    address: editBranch.address || editBranch.addressLine1 || '',
+    addressLine1: editBranch.addressLine1 || editBranch.address || '',
     gstin: editBranch.gstin || '',
     phone: editBranch.phone || '',
   } : { ...EMPTY_FORM });
@@ -66,7 +64,7 @@ function BranchForm({ editBranch, onClose, onSaved }: { editBranch?: any; onClos
           </div>
           <div className="col-span-2">
             <label className="label">Address</label>
-            <input className="input" placeholder="123 MG Road, Mumbai, Maharashtra" value={form.address} onChange={e => set('address', e.target.value)} />
+            <input className="input" placeholder="123 MG Road, Mumbai, Maharashtra" value={form.addressLine1} onChange={e => set('addressLine1', e.target.value)} />
           </div>
           <div>
             <label className="label">GSTIN</label>
@@ -167,10 +165,10 @@ export default function BranchesPage() {
                 <h3 className="font-bold text-slate-900 dark:text-white">{branch.name}</h3>
                 <p className="text-xs text-slate-900 dark:text-slate-500 font-mono mt-0.5">{branch.code}</p>
                 <p className="text-xs text-slate-900 dark:text-slate-500 mt-0.5">{typeLabel}</p>
-                {branch.address && (
+                {branch.addressLine1 && (
                   <div className="flex items-start gap-1 text-xs text-slate-900 dark:text-slate-400 mt-1.5">
                     <MapPin size={10} className="mt-0.5 flex-shrink-0" />
-                    <span className="line-clamp-2">{branch.address}</span>
+                    <span className="line-clamp-2">{branch.addressLine1}</span>
                   </div>
                 )}
                 {branch.phone && (

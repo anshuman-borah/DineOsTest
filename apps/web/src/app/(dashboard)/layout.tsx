@@ -9,7 +9,8 @@ import {
   Receipt, Clock, BarChart3, Users, Building2, Settings, LogOut,
   Wifi, WifiOff, Shield, Hotel, CalendarDays, SprayCan, BedDouble, Sun, Moon, Loader2
 } from 'lucide-react';
-import { useIsFetching } from '@tanstack/react-query';
+import { useIsFetching, useQuery } from '@tanstack/react-query';
+import { apiFetch } from '@/lib/api';
 import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { cn } from '@/lib/utils';
 import { ErrorBoundary } from '@/components/ui/ErrorBoundary';
@@ -89,6 +90,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
   const { isBlocked, plan, daysLeft } = useSubscriptionWall();
   const isFetching = useIsFetching();
 
+  // Fetch branches to get the current branch's type
+  const { data: branches } = useQuery({
+    queryKey: ['branches'],
+    queryFn: () => apiFetch('/api/v1/branches').then((r) => r.data),
+    // Only fetch if we have a branchId and an accessToken (already handled by Hydration)
+    enabled: !!branchId && !!accessToken,
+  });
+
+  const activeBranchType = branches?.find((b: any) => b.id === branchId)?.type || 'restaurant';
+
   useEffect(() => {
     setHydrated(true);
   }, []);
@@ -134,6 +145,16 @@ export default function DashboardLayout({ children }: { children: React.ReactNod
             // Hide branch-specific sections when in Global Mode (branchId is null)
             if (!branchId && (section === 'Restaurant' || section === 'Hotel')) {
               return null;
+            }
+
+            // Filter out sections based on branch type
+            if (branchId) {
+              if (section === 'Restaurant' && activeBranchType === 'hotel') {
+                return null;
+              }
+              if (section === 'Hotel' && activeBranchType !== 'hotel' && activeBranchType !== 'hotel_and_restaurant') {
+                return null;
+              }
             }
 
             const allowedItems = items.filter(

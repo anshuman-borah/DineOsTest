@@ -108,10 +108,7 @@ function AddBusinessModal({ onClose }: { onClose: () => void }) {
               <select className="input-field w-full" value={form.businessType} onChange={e => set('businessType', e.target.value)}>
                 <option value="restaurant">🍽️ Restaurant</option>
                 <option value="hotel">🏨 Hotel</option>
-                <option value="cafe">☕ Café</option>
-                <option value="bakery">🥐 Bakery</option>
-                <option value="bar">🍺 Bar &amp; Lounge</option>
-                <option value="cloud_kitchen">📦 Cloud Kitchen</option>
+                <option value="hotel_and_restaurant">🏨 & 🍽️ Hotel & Restaurant (Both)</option>
               </select>
             </div>
             <div className="space-y-1">

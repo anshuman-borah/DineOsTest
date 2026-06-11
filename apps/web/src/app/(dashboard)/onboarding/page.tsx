@@ -25,6 +25,12 @@ const INDIAN_STATES = [
 
 const GSTIN_RE = /^[0-9]{2}[A-Z]{5}[0-9]{4}[A-Z]{1}[1-9A-Z]{1}Z[0-9A-Z]{1}$/;
 
+const BRANCH_TYPES = [
+  { value: 'restaurant',      label: '🍽️ Restaurant' },
+  { value: 'hotel',           label: '🏨 Hotel' },
+  { value: 'hotel_and_restaurant', label: '🏨 & 🍽️ Hotel & Restaurant (Both)' },
+];
+
 const BUSINESS_TYPES = [
   { value: 'restaurant',      label: '🍽️ Restaurant / Dine-in' },
   { value: 'qsr',             label: '🍔 Quick Service / Fast Food' },

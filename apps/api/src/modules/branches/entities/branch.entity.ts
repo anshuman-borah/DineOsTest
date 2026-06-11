@@ -1,6 +1,6 @@
 import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn, UpdateDateColumn, Index } from 'typeorm';
 
-export enum BranchType { RESTAURANT = 'restaurant', HOTEL = 'hotel', CAFE = 'cafe', BAKERY = 'bakery', CLOUD_KITCHEN = 'cloud_kitchen' }
+export enum BranchType { RESTAURANT = 'restaurant', HOTEL = 'hotel', HOTEL_AND_RESTAURANT = 'hotel_and_restaurant', CAFE = 'cafe', BAKERY = 'bakery', CLOUD_KITCHEN = 'cloud_kitchen' }
 
 @Entity('branches')
 @Index(['tenantId', 'code'], { unique: true })
