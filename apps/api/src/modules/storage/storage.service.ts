@@ -3,11 +3,10 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
-// eslint-disable-next-line @typescript-eslint/no-var-requires
-const sharp = require('sharp');
+import { v2 as cloudinary } from 'cloudinary';
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
-export type StorageDriver = 'local' | 's3';
+export type StorageDriver = 'local' | 's3' | 'cloudinary';
 
 export interface UploadResult {
   url: string;          // public URL to access the file
@@ -34,29 +33,43 @@ export class StorageService {
   private readonly apiBaseUrl: string;
 
   constructor(private readonly config: ConfigService) {
-    this.driver = (config.get('STORAGE_DRIVER', 'local') as StorageDriver);
+    this.driver = config.get<StorageDriver>('STORAGE_DRIVER', 'local');
     this.localUploadsDir = path.join(process.cwd(), 'uploads');
     this.apiBaseUrl = config.get('API_URL', 'http://localhost:4000');
 
-    if (this.driver === 's3') {
-      const endpoint = config.get('S3_ENDPOINT', '');   // empty = AWS, set for MinIO/R2/DO Spaces
-      const region = config.get('S3_REGION', 'ap-south-1');
-      const accessKeyId = config.get('S3_ACCESS_KEY', '');
+    if (this.driver === 'cloudinary') {
+      // ── Configure Cloudinary SDK ──────────────────────────────────────
+      cloudinary.config({
+        cloud_name:  config.get('CLOUDINARY_CLOUD_NAME'),
+        api_key:     config.get('CLOUDINARY_API_KEY'),
+        api_secret:  config.get('CLOUDINARY_API_SECRET'),
+        secure:      true,
+      });
+      this.s3Bucket   = '';
+      this.s3PublicUrl = '';
+      this.logger.log(`Storage driver: Cloudinary (${config.get('CLOUDINARY_CLOUD_NAME')})`);
+
+    } else if (this.driver === 's3') {
+      const endpoint       = config.get('S3_ENDPOINT', '');
+      const region         = config.get('S3_REGION', 'ap-south-1');
+      const accessKeyId    = config.get('S3_ACCESS_KEY', '');
       const secretAccessKey = config.get('S3_SECRET_KEY', '');
-      this.s3Bucket = config.get('S3_BUCKET', 'dinestay-assets');
-      this.s3PublicUrl = config.get('S3_PUBLIC_URL', endpoint ? `${endpoint}/${this.s3Bucket}` : `https://${this.s3Bucket}.s3.${region}.amazonaws.com`);
+      this.s3Bucket      = config.get('S3_BUCKET', 'dinestay-assets');
+      this.s3PublicUrl   = config.get('S3_PUBLIC_URL', endpoint
+        ? `${endpoint}/${this.s3Bucket}`
+        : `https://${this.s3Bucket}.s3.${region}.amazonaws.com`);
 
       this.s3Client = new S3Client({
         region,
-        ...(endpoint ? { endpoint, forcePathStyle: true } : {}),  // forcePathStyle needed for MinIO
+        ...(endpoint ? { endpoint, forcePathStyle: true } : {}),
         credentials: { accessKeyId, secretAccessKey },
       });
-
       this.logger.log(`Storage driver: S3 (${endpoint || 'AWS'}) bucket=${this.s3Bucket}`);
+
     } else {
-      this.s3Bucket = '';
+      // ── Local disk ────────────────────────────────────────────────────
+      this.s3Bucket   = '';
       this.s3PublicUrl = '';
-      // Ensure uploads directory exists
       if (!fs.existsSync(this.localUploadsDir)) {
         fs.mkdirSync(this.localUploadsDir, { recursive: true });
       }
@@ -73,49 +86,47 @@ export class StorageService {
   ): Promise<UploadResult> {
     this.validateFile(file);
 
-    const isImage = file.mimetype.startsWith('image/');
+    const folderPath = tenantId ? `${tenantId}/${folder}` : folder;
 
-    // ── Optimise images before storing ────────────────────────────────
-    // Images are resized to max 1200px and converted to WebP (80% quality).
-    // This typically reduces file sizes by 85–95% with no visible quality loss.
-    // PDFs and other non-image files are stored as-is.
-    let processedBuffer = file.buffer;
-    let processedMime   = file.mimetype;
-    let ext = path.extname(file.originalname).toLowerCase() || this.mimetypeToExt(file.mimetype);
-
-    if (isImage) {
-      processedBuffer = await this.optimizeImage(file.buffer);
-      processedMime   = 'image/webp';
-      ext             = '.webp';
+    if (this.driver === 'cloudinary') {
+      return this.uploadToCloudinary(file, folderPath);
     }
 
+    // For local/S3 — generate a unique filename
+    const ext      = path.extname(file.originalname).toLowerCase() || this.mimetypeToExt(file.mimetype);
     const filename = `${crypto.randomBytes(12).toString('hex')}${ext}`;
-    const key = tenantId
-      ? `${tenantId}/${folder}/${filename}`
-      : `${folder}/${filename}`;
-
-    // Build a mutated file object so the private upload methods stay unchanged
-    const processedFile: Express.Multer.File = {
-      ...file,
-      buffer:   processedBuffer,
-      size:     processedBuffer.length,
-      mimetype: processedMime,
-    };
+    const key      = `${folderPath}/${filename}`;
 
     if (this.driver === 's3' && this.s3Client) {
-      return this.uploadToS3(processedFile, key);
+      return this.uploadToS3(file, key);
     }
-    return this.uploadToLocal(processedFile, key);
+    return this.uploadToLocal(file, key);
   }
 
-  // ─── Delete a file ────────────────────────────────────────────────────────
+  // ─── Delete a file ────────────────────────────────────────────────────────────────
 
-  async delete(key: string, driver?: StorageDriver): Promise<void> {
-    const d = driver || this.driver;
+  async delete(key: string): Promise<void> {
+    if (this.driver === 'cloudinary') {
+      if (key.includes('res.cloudinary.com') || (!key.includes('/static/') && !key.endsWith('.webp') && !key.endsWith('.jpg') && !key.endsWith('.png'))) {
+        // It's a Cloudinary URL or public_id — delete from Cloudinary
+        const publicId = this.extractCloudinaryPublicId(key);
+        await cloudinary.uploader.destroy(publicId);
+        this.logger.log(`Cloudinary deleted: ${publicId}`);
+      } else {
+        // It's an old local file path (e.g. tenantId/general/abc.webp) — delete from disk
+        const filePath = path.join(this.localUploadsDir, key);
+        if (fs.existsSync(filePath)) {
+          fs.unlinkSync(filePath);
+          this.logger.log(`Local deleted (legacy): ${filePath}`);
+        } else {
+          this.logger.warn(`Local file not found (already deleted?): ${filePath}`);
+        }
+      }
 
-    if (d === 's3' && this.s3Client) {
+    } else if (this.driver === 's3' && this.s3Client) {
       await this.s3Client.send(new DeleteObjectCommand({ Bucket: this.s3Bucket, Key: key }));
       this.logger.log(`S3 deleted: ${key}`);
+
     } else {
       const filePath = path.join(this.localUploadsDir, key);
       if (fs.existsSync(filePath)) {
@@ -123,6 +134,43 @@ export class StorageService {
         this.logger.log(`Local deleted: ${filePath}`);
       }
     }
+  }
+
+  // ─── Private: Cloudinary upload ───────────────────────────────────────────
+
+  private uploadToCloudinary(file: Express.Multer.File, folderPath: string): Promise<UploadResult> {
+    return new Promise((resolve, reject) => {
+      const uploadStream = cloudinary.uploader.upload_stream(
+        {
+          folder:           folderPath,
+          resource_type:    'auto',
+          // Let Cloudinary auto-optimize: serve WebP to browsers that support it,
+          // auto quality — no sharp needed!
+          transformation: [
+            { width: 1200, height: 1200, crop: 'limit' },  // max 1200px, keep ratio
+            { fetch_format: 'auto', quality: 'auto' },      // auto format + quality
+          ],
+        },
+        (error, result) => {
+          if (error || !result) return reject(error ?? new Error('Cloudinary upload failed'));
+
+          // public_id is used for deletion later (stored as the key)
+          this.logger.log(`Cloudinary upload: ${result.public_id} (${result.bytes} bytes)`);
+
+          resolve({
+            url:      result.secure_url,   // full HTTPS CDN URL — stored in DB
+            key:      result.public_id,    // e.g. "tenantId/menu-items/abc" — used for delete
+            driver:   'cloudinary',
+            size:     result.bytes,
+            mimetype: file.mimetype,
+          });
+        },
+      );
+
+      // Pipe the file buffer into the upload stream
+      const { Readable } = require('stream');
+      Readable.from(file.buffer).pipe(uploadStream);
+    });
   }
 
   // ─── Private: Local disk upload ───────────────────────────────────────────
@@ -145,13 +193,11 @@ export class StorageService {
   private async uploadToS3(file: Express.Multer.File, key: string): Promise<UploadResult> {
     await this.s3Client!.send(
       new PutObjectCommand({
-        Bucket: this.s3Bucket,
-        Key: key,
-        Body: file.buffer,
-        ContentType: file.mimetype,
+        Bucket:        this.s3Bucket,
+        Key:           key,
+        Body:          file.buffer,
+        ContentType:   file.mimetype,
         ContentLength: file.size,
-        // Public read ACL — omit if bucket policy handles it (R2, MinIO with policy)
-        // ACL: 'public-read',
       }),
     );
 
@@ -161,7 +207,7 @@ export class StorageService {
     return { url, key, driver: 's3', size: file.size, mimetype: file.mimetype };
   }
 
-  // ─── Validation ───────────────────────────────────────────────────────────
+  // ─── Helpers ──────────────────────────────────────────────────────────────
 
   private validateFile(file: Express.Multer.File): void {
     if (!file) throw new BadRequestException('No file provided');
@@ -181,20 +227,21 @@ export class StorageService {
     return map[mimetype] || '.bin';
   }
 
-  // ── Image optimisation ─────────────────────────────────────────────────
-
   /**
-   * Resize to max 1200 × 1200 (keeping aspect ratio) and convert to WebP.
-   * Animated GIFs are flattened to a single frame — acceptable for menu photos.
-   * Processing is done entirely in-memory; no temp files are created.
+   * Extracts the Cloudinary public_id from either:
+   *  - A full Cloudinary URL:  https://res.cloudinary.com/cloud/image/upload/v123/tenantId/folder/abc.webp
+   *  - Already a public_id:   tenantId/folder/abc
    */
-  private async optimizeImage(buffer: Buffer): Promise<Buffer> {
-    return sharp(buffer)
-      .resize(1200, 1200, {
-        fit: 'inside',          // never upscale, keep aspect ratio
-        withoutEnlargement: true,
-      })
-      .webp({ quality: 80 })   // convert to WebP at 80% quality
-      .toBuffer();
+  private extractCloudinaryPublicId(keyOrUrl: string): string {
+    if (keyOrUrl.includes('res.cloudinary.com')) {
+      // Extract path after /upload/vXXXX/ or /upload/
+      const match = keyOrUrl.match(/\/upload\/(?:v\d+\/)?(.+)$/);
+      if (match) {
+        // Remove file extension — Cloudinary public_ids don't include extension
+        return match[1].replace(/\.[^/.]+$/, '');
+      }
+    }
+    // Already a public_id — strip extension if present
+    return keyOrUrl.replace(/\.[^/.]+$/, '');
   }
 }

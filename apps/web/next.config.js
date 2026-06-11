@@ -55,6 +55,8 @@ const nextConfig = {
       // Cloudflare R2 / DigitalOcean Spaces / MinIO (custom domain)
       { protocol: 'https', hostname: '**.r2.cloudflarestorage.com', pathname: '/**' },
       { protocol: 'https', hostname: '**.digitaloceanspaces.com', pathname: '/**' },
+      // Cloudinary CDN
+      { protocol: 'https', hostname: 'res.cloudinary.com', pathname: '/**' },
     ],
   },
 
@@ -91,8 +93,8 @@ const nextConfig = {
       `style-src 'self' 'unsafe-inline' https://fonts.googleapis.com`,
       // Fonts
       `font-src 'self' https://fonts.gstatic.com`,
-      // Images: self + API static files + S3/CDN (no wildcard in subdomain+path)
-      `img-src 'self' data: blob: ${apiUrl} https://*.s3.amazonaws.com https://*.r2.cloudflarestorage.com https://*.digitaloceanspaces.com`,
+      // Images: self + API static files + S3/CDN + Cloudinary
+      `img-src 'self' data: blob: ${apiUrl} https://*.s3.amazonaws.com https://*.r2.cloudflarestorage.com https://*.digitaloceanspaces.com https://res.cloudinary.com`,
       // API + WebSocket connections — must include both ws: and wss: schemes
       `connect-src 'self' ${apiUrl} ${socketUrl} ws://${new URL(socketUrl).host} wss://${new URL(socketUrl).host} https://o1.ingest.sentry.io https://o2.ingest.sentry.io https://o4.ingest.sentry.io https://*.razorpay.com`,
       // Workers (service worker, next-pwa)
