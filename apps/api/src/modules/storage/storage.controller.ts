@@ -1,6 +1,7 @@
 import {
   Controller, Post, Delete, Param, Query,
-  UseInterceptors, UploadedFile, UseGuards, HttpCode, HttpStatus,
+  UseInterceptors, UploadedFile, UseGuards,
+  HttpCode, HttpStatus, ForbiddenException,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiBearerAuth, ApiConsumes, ApiBody } from '@nestjs/swagger';
@@ -36,8 +37,19 @@ export class StorageController {
 
   @Delete(':key(*)')
   @HttpCode(HttpStatus.NO_CONTENT)
-  @ApiOperation({ summary: 'Delete an uploaded file by its storage key' })
-  delete(@Param('key') key: string) {
+  @ApiOperation({ summary: 'Delete an uploaded file by its storage key (tenant-scoped)' })
+  delete(
+    @Param('key') key: string,
+    @TenantId() tenantId: string,
+  ) {
+    // ── Tenant isolation check ────────────────────────────────────────────────
+    // Files are stored as  {tenantId}/{folder}/{filename}
+    // A tenant must only be able to delete files under their own prefix.
+    // This prevents one restaurant from deleting another's images.
+    if (!key.startsWith(`${tenantId}/`)) {
+      throw new ForbiddenException('You can only delete files belonging to your account');
+    }
+
     return this.storageService.delete(key);
   }
 }

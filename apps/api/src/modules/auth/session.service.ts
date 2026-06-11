@@ -79,8 +79,16 @@ export class SessionService implements OnModuleInit, OnModuleDestroy {
   // ── Check session exists (used by JWT strategy on every request) ──────────
 
   async sessionExists(userId: string, sessionId: string): Promise<boolean> {
-    const exists = await this.redis.exists(this._key(userId, sessionId));
-    return exists === 1;
+    try {
+      const exists = await this.redis.exists(this._key(userId, sessionId));
+      return exists === 1;
+    } catch {
+      // Redis unavailable (e.g. wrong password, connection refused) —
+      // fail open so users aren't locked out. Session revocation won't
+      // work until Redis is fixed, but login and normal usage will.
+      this.logger.warn('sessionExists: Redis unavailable, failing open');
+      return true;
+    }
   }
 
   // ── Validate on token refresh ─────────────────────────────────────────────

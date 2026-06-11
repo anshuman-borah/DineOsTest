@@ -3,6 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import * as fs from 'fs';
 import * as path from 'path';
 import * as crypto from 'crypto';
+// eslint-disable-next-line @typescript-eslint/no-var-requires
+const sharp = require('sharp');
 import { S3Client, PutObjectCommand, DeleteObjectCommand } from '@aws-sdk/client-s3';
 
 export type StorageDriver = 'local' | 's3';
@@ -71,16 +73,39 @@ export class StorageService {
   ): Promise<UploadResult> {
     this.validateFile(file);
 
-    const ext = path.extname(file.originalname).toLowerCase() || this.mimetypeToExt(file.mimetype);
+    const isImage = file.mimetype.startsWith('image/');
+
+    // ── Optimise images before storing ────────────────────────────────
+    // Images are resized to max 1200px and converted to WebP (80% quality).
+    // This typically reduces file sizes by 85–95% with no visible quality loss.
+    // PDFs and other non-image files are stored as-is.
+    let processedBuffer = file.buffer;
+    let processedMime   = file.mimetype;
+    let ext = path.extname(file.originalname).toLowerCase() || this.mimetypeToExt(file.mimetype);
+
+    if (isImage) {
+      processedBuffer = await this.optimizeImage(file.buffer);
+      processedMime   = 'image/webp';
+      ext             = '.webp';
+    }
+
     const filename = `${crypto.randomBytes(12).toString('hex')}${ext}`;
     const key = tenantId
       ? `${tenantId}/${folder}/${filename}`
       : `${folder}/${filename}`;
 
+    // Build a mutated file object so the private upload methods stay unchanged
+    const processedFile: Express.Multer.File = {
+      ...file,
+      buffer:   processedBuffer,
+      size:     processedBuffer.length,
+      mimetype: processedMime,
+    };
+
     if (this.driver === 's3' && this.s3Client) {
-      return this.uploadToS3(file, key);
+      return this.uploadToS3(processedFile, key);
     }
-    return this.uploadToLocal(file, key);
+    return this.uploadToLocal(processedFile, key);
   }
 
   // ─── Delete a file ────────────────────────────────────────────────────────
@@ -154,5 +179,22 @@ export class StorageService {
       'image/gif': '.gif', 'application/pdf': '.pdf',
     };
     return map[mimetype] || '.bin';
+  }
+
+  // ── Image optimisation ─────────────────────────────────────────────────
+
+  /**
+   * Resize to max 1200 × 1200 (keeping aspect ratio) and convert to WebP.
+   * Animated GIFs are flattened to a single frame — acceptable for menu photos.
+   * Processing is done entirely in-memory; no temp files are created.
+   */
+  private async optimizeImage(buffer: Buffer): Promise<Buffer> {
+    return sharp(buffer)
+      .resize(1200, 1200, {
+        fit: 'inside',          // never upscale, keep aspect ratio
+        withoutEnlargement: true,
+      })
+      .webp({ quality: 80 })   // convert to WebP at 80% quality
+      .toBuffer();
   }
 }

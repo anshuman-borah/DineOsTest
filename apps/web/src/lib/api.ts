@@ -8,10 +8,12 @@ export const api = axios.create({ baseURL: BASE });
 
 // Attach JWT + tenant headers to every request
 api.interceptors.request.use((config) => {
-  const { accessToken, tenantId, branchId } = useAuthStore.getState();
+  const { accessToken, tenantId, branchId, user } = useAuthStore.getState();
   if (accessToken) config.headers.Authorization = `Bearer ${accessToken}`;
-  if (tenantId) config.headers['x-tenant-id'] = tenantId;
-  if (branchId) config.headers['x-branch-id'] = branchId;
+  // Superadmin JWT has tenantId='superadmin' — don't send x-tenant-id header
+  // for superadmin users as it would cause a mismatch with their JWT payload
+  if (tenantId && user?.role !== 'superadmin') config.headers['x-tenant-id'] = tenantId;
+  if (branchId && user?.role !== 'superadmin') config.headers['x-branch-id'] = branchId;
   return config;
 });
 
