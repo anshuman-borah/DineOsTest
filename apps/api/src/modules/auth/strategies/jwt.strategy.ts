@@ -100,9 +100,9 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       if (!branch) {
         throw new UnauthorizedException('x-branch-id does not belong to your tenant');
       }
-      return { ...payload, id: payload.sub, branchId: headerBranchId, permissions: user.permissions ?? {} };
+      return { ...payload, id: payload.sub, branchId: headerBranchId };
     }
 
-    return { ...payload, id: payload.sub, permissions: user.permissions ?? {} };
+    return { ...payload, id: payload.sub };
   }
 } //strategy

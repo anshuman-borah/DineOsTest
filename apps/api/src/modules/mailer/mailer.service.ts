@@ -33,13 +33,20 @@ export class MailerService {
     const apiKey = this.config.get<string>('RESEND_API_KEY');
 
     if (!apiKey) {
-      throw new Error('RESEND_API_KEY is missing');
+      this.logger.warn('RESEND_API_KEY is not set — emails will be logged to console only');
+      this.resend = null as any;
+      return;
     }
 
     this.resend = new Resend(apiKey);
   }
 
   async send(options: SendMailOptions): Promise<boolean> {
+    if (!this.resend) {
+      this.logger.log(`[EMAIL SKIPPED - no API key] To: ${options.to} | Subject: ${options.subject}`);
+      return true;
+    }
+
     try {
       const { error } = await this.resend.emails.send({
         from: this.from,

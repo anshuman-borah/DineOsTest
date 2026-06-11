@@ -1,4 +1,4 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { MenuItem } from './entities/menu-item.entity';
@@ -22,6 +22,8 @@ const DEFAULT_GST_RATES = [
 
 @Injectable()
 export class MenuService {
+  private readonly logger = new Logger(MenuService.name);
+
   constructor(
     @InjectRepository(MenuItem)
     private readonly itemRepo: Repository<MenuItem>,
@@ -106,9 +108,9 @@ export class MenuService {
     if (imageChanged && oldImageUrl) {
       const key = this.extractStorageKey(oldImageUrl);
       if (key) {
-        await this.storageService.delete(key).catch(() => {
-          // Don't fail the update if old image cleanup fails
-        });
+        await this.storageService.delete(key)
+          .then(() => this.logger.log(`Old image deleted on update: ${key}`))
+          .catch((err) => this.logger.warn(`Failed to delete old image on update: ${key} — ${err.message}`));
       }
     }
 
@@ -130,10 +132,9 @@ export class MenuService {
     if (item.imageUrl) {
       const key = this.extractStorageKey(item.imageUrl);
       if (key) {
-        await this.storageService.delete(key).catch(() => {
-          // Log but don't fail the delete if image cleanup fails
-          // (file may have already been removed manually)
-        });
+        await this.storageService.delete(key)
+          .then(() => this.logger.log(`Image deleted for item ${id}: ${key}`))
+          .catch((err) => this.logger.warn(`Failed to delete image for item ${id}: ${key} — ${err.message}`));
       }
     }
 
