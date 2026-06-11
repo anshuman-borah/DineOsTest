@@ -8,7 +8,7 @@ import { useAuthStore } from '@/store/auth.store';
 import { usePosStore } from '@/store/pos.store';
 import { printHtml } from '@/lib/printer';
 import { amountInWords } from '@/lib/gst';
-import { X, Printer, CheckCircle, Loader2 } from 'lucide-react';
+import { X, Printer, CheckCircle, Loader2, Mail } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type PayMethod = 'cash' | 'card' | 'upi' | 'wallet' | 'credit' | 'complimentary';
@@ -73,6 +73,7 @@ export function BillingModal({
   const [isSplit, setIsSplit] = useState(false);
   const [billed, setBilled] = useState(false);
   const [billData, setBillData] = useState<any>(null);
+  const [customerEmail, setCustomerEmail] = useState('');
 
   // Bill amount cashier will charge
   const [finalTotal, setFinalTotal] = useState<number>(defaultPayable);
@@ -261,6 +262,16 @@ export function BillingModal({
       setFinalTotal(round2(data.serverGrandTotal));
       setBilled(true);
       toast.success('Bill created successfully!');
+
+      // Fire-and-forget: send email receipt if email was provided
+      if (customerEmail.trim() && data?.id) {
+        apiPost(`/api/v1/billing/bills/${data.id}/email`, { email: customerEmail.trim() })
+          .then(() => toast.success('Receipt emailed to ' + customerEmail.trim()))
+          .catch((err: any) => {
+            console.error('Email send failed:', err);
+            toast.error('Could not send email receipt. You can resend from the billing page.');
+          });
+      }
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message || err?.message || 'Billing failed';
@@ -442,11 +453,24 @@ export function BillingModal({
                     onChange={(e) => setCustomerPhone(e.target.value)}
                   />
                 </div>
-                <div className="col-span-2">
-                  <label className="label">Customer GSTIN (for B2B)</label>
+                <div>
+                  <label className="label">Email <span className="text-slate-900 dark:text-slate-500 font-normal">(for receipt)</span></label>
+                  <div className="relative">
+                    <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-900 dark:text-slate-500" />
+                    <input
+                      className="input pl-8"
+                      type="email"
+                      placeholder="Optional"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">GSTIN <span className="text-slate-900 dark:text-slate-500 font-normal">(B2B)</span></label>
                   <input
                     className="input"
-                    placeholder="Optional — triggers IGST"
+                    placeholder="Optional"
                     value={customerGstin}
                     onChange={(e) => setCustomerGstin(e.target.value)}
                   />
