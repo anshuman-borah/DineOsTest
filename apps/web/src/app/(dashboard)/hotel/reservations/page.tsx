@@ -14,10 +14,12 @@ import { useSearchParams } from 'next/navigation';
 import toast from 'react-hot-toast';
 import {
   BedDouble, Plus, Search, RefreshCw, X, ChevronLeft, ChevronRight,
-  LogIn, LogOut, Ban, Receipt, Loader2, User, Calendar,
+  LogIn, LogOut, Ban, Receipt, Loader2, User, Calendar, Printer, CheckCircle,
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
-import { api } from '@/lib/api';
+import { api, apiFetch } from '@/lib/api';
+import { printHtml } from '@/lib/printer';
+import dayjs from 'dayjs';
 import Link from 'next/link';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -346,6 +348,9 @@ function NewReservationDrawer({ onClose, onCreated }: { onClose: () => void; onC
 function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reservation; onClose: () => void; onDone: () => void }) {
   const [paymentMethod, setPaymentMethod] = useState<'cash' | 'card' | 'upi' | 'wallet'>('card');
   const [amountPaid, setAmountPaid] = useState('');
+  const [checkoutComplete, setCheckoutComplete] = useState(false);
+  const [billResult, setBillResult] = useState<any>(null);
+  const [isPrinting, setIsPrinting] = useState(false);
 
   // ── Fetch active hotel shift ───────────────────────────────────────────────
   const { data: hotelShift } = useQuery<{ id: string } | null>({
@@ -388,18 +393,72 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
       await api.post(`/api/v1/hotel/reservations/${reservation.id}/check-out`);
       // 2. Generate the final bill with payment collected
       //    Pass shiftId so the backend can link payment to the shift
-      await api.post(`/api/v1/hotel/reservations/${reservation.id}/bill`, {
+      const billRes = await api.post(`/api/v1/hotel/reservations/${reservation.id}/bill`, {
         paymentMethod,
         amountPaid: paid,
         shiftId: hotelShift?.id || undefined,
       });
+      return billRes.data?.data ?? billRes.data;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       toast.success('Guest checked out & bill generated!');
-      onDone();
+      setBillResult(data);
+      setCheckoutComplete(true);
     },
     onError: (e: any) => toast.error(e?.response?.data?.message || 'Checkout failed'),
   });
+
+  /** Print the hotel bill receipt */
+  const handlePrintBill = async () => {
+    setIsPrinting(true);
+    try {
+      // Fetch full bill detail for printing
+      const billId = billResult?.id || billResult?.billId;
+      let detail = billResult;
+
+      if (billId) {
+        try {
+          const res = await apiFetch(`/api/v1/billing/bills/${billId}`);
+          detail = res.data;
+        } catch {
+          // fallback to billResult if fetch fails
+        }
+      }
+
+      printHtml({
+        restaurantName: 'Dine&Stay Hotel',
+        billNumber: detail?.billNumber || 'N/A',
+        invoiceDate: dayjs(detail?.createdAt || new Date()).format('D MMM YYYY h:mm A'),
+        orderType: 'hotel',
+        customerName: detail?.customerName || reservation.primaryGuest?.name || undefined,
+        items: detail?.orderItems?.map((i: any) => ({
+          name: i.name || i.description,
+          qty: Number(i.quantity || 1),
+          rate: Number(i.unitPrice || i.rate || 0),
+          amount: Number(i.lineTotal || i.amount || 0),
+        })) || (folio?.charges || []).filter((c) => Number(c.amount) > 0).map((c) => ({
+          name: c.description,
+          qty: 1,
+          rate: Number(c.amount),
+          amount: Number(c.amount),
+        })),
+        subtotal: Number(detail?.subtotal || folio?.totalCharges || 0),
+        totalTax: Number(detail?.totalTax || 0),
+        grandTotal: Number(detail?.grandTotal || folio?.totalCharges || 0),
+        payments: detail?.payments?.map((p: any) => ({
+          method: p.method,
+          amount: Number(p.amount),
+        })) || [{ method: paymentMethod, amount: parseFloat(amountPaid) || 0 }],
+        gstSummary: detail?.gstSummary,
+      });
+      toast.success('Print dialog opened');
+    } catch (err) {
+      console.error('Print failed:', err);
+      toast.error('Print failed. Check browser console.');
+    } finally {
+      setIsPrinting(false);
+    }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
@@ -407,15 +466,60 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
         {/* Header */}
         <div className="flex items-center justify-between px-5 py-4 border-b border-slate-200 dark:border-slate-800">
           <div>
-            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">Checkout & Settle Bill</h2>
+            <h2 className="text-sm font-semibold text-slate-900 dark:text-white">
+              {checkoutComplete ? 'Checkout Complete ✓' : 'Checkout & Settle Bill'}
+            </h2>
             <div className="text-xs text-slate-900 dark:text-slate-500">
               Room {reservation.room?.roomNumber} · {reservation.primaryGuest?.name}
             </div>
           </div>
-          <button onClick={onClose} className="p-1.5 rounded-lg hover:bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-500"><X size={15} /></button>
+          <button onClick={checkoutComplete ? () => { onDone(); } : onClose} className="p-1.5 rounded-lg hover:bg-slate-50 dark:hover:bg-slate-800 text-slate-900 dark:text-slate-500"><X size={15} /></button>
         </div>
 
         <div className="p-5 space-y-4">
+          {checkoutComplete ? (
+            /* ── Post-checkout success screen ─── */
+            <div className="space-y-4">
+              <div className="flex flex-col items-center gap-3 py-4">
+                <CheckCircle size={48} className="text-emerald-600 dark:text-emerald-400" />
+                <div className="text-center">
+                  <div className="text-slate-900 dark:text-white font-bold text-xl">
+                    {billResult?.billNumber ? `Bill #${billResult.billNumber}` : 'Bill Generated'}
+                  </div>
+                  <div className="text-slate-900 dark:text-slate-400 text-sm mt-1">
+                    {reservation.primaryGuest?.name} · Room {reservation.room?.roomNumber}
+                  </div>
+                  {billResult?.grandTotal && (
+                    <div className="text-amber-600 dark:text-amber-400 font-bold text-lg mt-2">
+                      ₹{Number(billResult.grandTotal).toLocaleString('en-IN')}
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <button
+                  onClick={handlePrintBill}
+                  disabled={isPrinting}
+                  className="btn-secondary flex items-center justify-center gap-2 py-2.5 disabled:opacity-50"
+                >
+                  {isPrinting ? (
+                    <><Loader2 size={14} className="animate-spin" /> Printing…</>
+                  ) : (
+                    <><Printer size={14} /> Print Receipt</>
+                  )}
+                </button>
+                <button
+                  onClick={() => onDone()}
+                  className="btn-primary flex items-center justify-center gap-2 py-2.5"
+                >
+                  Done
+                </button>
+              </div>
+            </div>
+          ) : (
+            /* ── Pre-checkout form ─── */
+            <>
           {/* How hotel billing works */}
           <div className="bg-blue-500/10 border border-blue-500/20 rounded-lg p-3 text-xs text-blue-300 space-y-1">
             <div className="font-semibold text-blue-200">How checkout billing works:</div>
@@ -531,6 +635,8 @@ function CheckoutDialog({ reservation, onClose, onDone }: { reservation: Reserva
               <><LogOut size={14} /> Confirm Checkout & Generate Bill</>
             )}
           </button>
+            </>
+          )}
         </div>
       </div>
     </div>
