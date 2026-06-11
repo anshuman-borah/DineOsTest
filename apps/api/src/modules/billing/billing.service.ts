@@ -1,14 +1,17 @@
-import { Injectable, NotFoundException, BadRequestException } from '@nestjs/common';
+import { Injectable, NotFoundException, BadRequestException, Logger } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository, DataSource } from 'typeorm';
+import * as crypto from 'crypto';
 import { Bill, GstType, InvoiceStatus } from './entities/bill.entity';
 import { Payment, PaymentMethod } from './entities/payment.entity';
 import { Order, OrderStatus } from '../orders/entities/order.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
 import { Shift } from '../shifts/entities/shift.entity';
 import { Branch } from '../branches/entities/branch.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { MailerService } from '../mailer/mailer.service';
 import { PdfService } from './pdf.service';
+const Razorpay = require('razorpay');
 
 export interface PaymentSplitDto {
   method: PaymentMethod;
@@ -35,6 +38,8 @@ export interface CreateBillDto {
 
 @Injectable()
 export class BillingService {
+  private readonly logger = new Logger(BillingService.name);
+
   constructor(
     @InjectRepository(Bill)      private readonly billRepo:    Repository<Bill>,
     @InjectRepository(Payment)   private readonly paymentRepo: Repository<Payment>,
@@ -42,6 +47,7 @@ export class BillingService {
     @InjectRepository(OrderItem) private readonly itemRepo:    Repository<OrderItem>,
     @InjectRepository(Shift)     private readonly shiftRepo:   Repository<Shift>,
     @InjectRepository(Branch)    private readonly branchRepo:  Repository<Branch>,
+    @InjectRepository(Tenant)    private readonly tenantRepo:  Repository<Tenant>,
     private readonly dataSource: DataSource,
     private readonly mailer:     MailerService,
     private readonly pdf:        PdfService,
@@ -421,5 +427,77 @@ export class BillingService {
     );
 
     return `${prefix}${String(Number(count) + 1).padStart(5, '0')}`;
+  }
+
+  // ─── Per-Tenant Razorpay Order (for POS / Hotel billing) ──────────────────
+
+  async createRazorpayOrderForBilling(
+    tenantId: string,
+    amountInRupees: number,
+    receipt?: string,
+  ): Promise<{ orderId: string; amount: number; currency: string; keyId: string }> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const rzp = tenant.settings?.razorpay;
+    if (!rzp?.keyId || !rzp?.keySecret) {
+      throw new BadRequestException(
+        'Razorpay is not configured for this account. Please connect Razorpay in Settings.',
+      );
+    }
+
+    const client = new Razorpay({ key_id: rzp.keyId, key_secret: rzp.keySecret });
+
+    // Razorpay expects amount in paise (1 INR = 100 paise)
+    const amountPaise = Math.round(amountInRupees * 100);
+
+    try {
+      const order = await client.orders.create({
+        amount: amountPaise,
+        currency: 'INR',
+        receipt: receipt || `bill-${Date.now()}`,
+      });
+
+      this.logger.log(`Razorpay billing order created: ${order.id} for tenant ${tenantId}`);
+
+      return {
+        orderId: order.id,
+        amount: amountPaise,
+        currency: 'INR',
+        keyId: rzp.keyId,
+      };
+    } catch (e: any) {
+      this.logger.error('Razorpay order creation failed', e?.error || e);
+      throw new BadRequestException(
+        e?.error?.description || 'Failed to create Razorpay order. Check your Razorpay credentials.',
+      );
+    }
+  }
+
+  async verifyRazorpayBillingPayment(
+    tenantId: string,
+    razorpayOrderId: string,
+    razorpayPaymentId: string,
+    razorpaySignature: string,
+  ): Promise<{ valid: boolean; paymentId: string }> {
+    const tenant = await this.tenantRepo.findOne({ where: { id: tenantId } });
+    if (!tenant) throw new NotFoundException('Tenant not found');
+
+    const keySecret = tenant.settings?.razorpay?.keySecret;
+    if (!keySecret) {
+      throw new BadRequestException('Razorpay is not configured for this account.');
+    }
+
+    const body = `${razorpayOrderId}|${razorpayPaymentId}`;
+    const expectedSignature = crypto
+      .createHmac('sha256', keySecret)
+      .update(body)
+      .digest('hex');
+
+    if (expectedSignature !== razorpaySignature) {
+      throw new BadRequestException('Invalid Razorpay payment signature. Payment could not be verified.');
+    }
+
+    return { valid: true, paymentId: razorpayPaymentId };
   }
 }

@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Patch, Body, Param, Query, UseGuards, HttpCode, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiBearerAuth, ApiOperation } from '@nestjs/swagger';
-import { IsEmail, IsString } from 'class-validator';
+import { IsEmail, IsString, IsNumber, IsOptional } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { RolesGuard } from '../auth/guards/roles.guard';
@@ -11,6 +11,15 @@ import { BillingService, CreateBillDto } from './billing.service';
 
 class EmailBillDto { @ApiProperty() @IsEmail() email: string; }
 class VoidBillDto { @ApiProperty() @IsString() reason: string; }
+class CreateRazorpayOrderDto {
+  @ApiProperty() @IsNumber() amount: number;
+  @ApiProperty({ required: false }) @IsOptional() @IsString() receipt?: string;
+}
+class VerifyRazorpayBillingDto {
+  @ApiProperty() @IsString() razorpayOrderId: string;
+  @ApiProperty() @IsString() razorpayPaymentId: string;
+  @ApiProperty() @IsString() razorpaySignature: string;
+}
 
 @ApiTags('billing')
 @ApiBearerAuth()
@@ -24,6 +33,26 @@ export class BillingController {
   @ApiOperation({ summary: 'Create bill and process payment' })
   createBill(@Body() dto: CreateBillDto, @TenantId() tenantId: string, @BranchId() branchId: string) {
     return this.svc.createBill({ ...dto, tenantId, branchId: branchId || dto.branchId });
+  }
+
+  @Post('razorpay/create-order')
+  @HttpCode(HttpStatus.CREATED)
+  @ApiOperation({ summary: 'Create a Razorpay order using the tenant own credentials (for POS/Hotel billing)' })
+  createRazorpayOrder(
+    @Body() dto: CreateRazorpayOrderDto,
+    @TenantId() tenantId: string,
+  ) {
+    return this.svc.createRazorpayOrderForBilling(tenantId, dto.amount, dto.receipt);
+  }
+
+  @Post('razorpay/verify-payment')
+  @HttpCode(HttpStatus.OK)
+  @ApiOperation({ summary: 'Verify Razorpay payment signature for billing' })
+  verifyRazorpayPayment(
+    @Body() dto: VerifyRazorpayBillingDto,
+    @TenantId() tenantId: string,
+  ) {
+    return this.svc.verifyRazorpayBillingPayment(tenantId, dto.razorpayOrderId, dto.razorpayPaymentId, dto.razorpaySignature);
   }
 
   @Get('bills')

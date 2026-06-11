@@ -10,12 +10,13 @@ import { Order } from '../orders/entities/order.entity';
 import { OrderItem } from '../orders/entities/order-item.entity';
 import { Shift } from '../shifts/entities/shift.entity';
 import { Branch } from '../branches/entities/branch.entity';
+import { Tenant } from '../tenants/entities/tenant.entity';
 import { SubscriptionGuard } from '../auth/guards/subscription.guard';
 import { Subscription } from '../subscriptions/entities/subscription.entity';
 import { Plan } from '../subscriptions/entities/plan.entity';
 
 @Module({
-  imports: [TypeOrmModule.forFeature([Bill, Payment, GstRate, Order, OrderItem, Shift, Branch, Subscription, Plan])],
+  imports: [TypeOrmModule.forFeature([Bill, Payment, GstRate, Order, OrderItem, Shift, Branch, Tenant, Subscription, Plan])],
   providers: [BillingService, PdfService, SubscriptionGuard],
   controllers: [BillingController],
   exports: [BillingService],

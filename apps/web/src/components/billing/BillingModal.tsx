@@ -2,16 +2,20 @@
 import { useState } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import toast from 'react-hot-toast';
-import { apiPost, apiPatch, apiFetch } from '@/lib/api';
+import { apiPost, apiPatch, apiFetch, api } from '@/lib/api';
 import { enqueueSync, getResolvedId, getPendingSyncItems } from '@/lib/offline';
 import { useAuthStore } from '@/store/auth.store';
 import { usePosStore } from '@/store/pos.store';
+import { useOnlineStatus } from '@/hooks/useOnlineStatus';
 import { printHtml } from '@/lib/printer';
 import { amountInWords } from '@/lib/gst';
-import { X, Printer, CheckCircle, Loader2 } from 'lucide-react';
+import { X, Printer, CheckCircle, Loader2, Mail, WifiOff } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
 type PayMethod = 'cash' | 'card' | 'upi' | 'wallet' | 'credit' | 'complimentary';
+
+// Methods that require Razorpay (online only)
+const RAZORPAY_METHODS: PayMethod[] = ['upi', 'card', 'credit'];
 
 const PAYMENT_METHODS: { id: PayMethod; label: string; icon: string }[] = [
   { id: 'cash',          label: 'Cash',   icon: '💵' },
@@ -55,6 +59,7 @@ export function BillingModal({
 }: Props) {
   const { branchId, tenantId } = useAuthStore();
   const { cart, orderType, tableId, tableName, discountAmount, discountPercent } = usePosStore();
+  const isOnline = useOnlineStatus();
 
   // Exact amounts from POS
   const exactGrandTotal = round2(rawGrandTotal);
@@ -73,194 +78,266 @@ export function BillingModal({
   const [isSplit, setIsSplit] = useState(false);
   const [billed, setBilled] = useState(false);
   const [billData, setBillData] = useState<any>(null);
+  const [customerEmail, setCustomerEmail] = useState('');
+  const [isRazorpayPending, setIsRazorpayPending] = useState(false);
 
   // Bill amount cashier will charge
   const [finalTotal, setFinalTotal] = useState<number>(defaultPayable);
   const [manualOverride, setManualOverride] = useState(false);
 
-  // Cash tendered defaults to payable amount, not ceil()
+  // Cash tendered defaults to payable amount
   const [cashEntered, setCashEntered] = useState<string>(formatInputAmount(defaultPayable));
 
   const cashAmount = round2(parseFloat(cashEntered) || 0);
   const change = round2(cashAmount - finalTotal);
 
-  const billMutation = useMutation({
-    networkMode: 'always',
-    mutationFn: async () => {
-      const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
-      let oid = orderId;
+  // Is the selected method an online-only Razorpay method?
+  const isRazorpayMethod = RAZORPAY_METHODS.includes(method) && !isSplit;
 
-      // Resolve OFFLINE- IDs that were already synced in a previous session
-      // (PosStore may still hold the old OFFLINE-xxx even though the order is on the server)
-      if (oid?.startsWith('OFFLINE-')) {
-        const resolved = await getResolvedId(oid);
-        if (resolved) {
-          oid = resolved;
-        }
-      }
+  const handleMethodSelect = (m: PayMethod) => {
+    if (!isOnline && RAZORPAY_METHODS.includes(m)) {
+      toast.error(`${m.toUpperCase()} payment requires internet. Use Cash when offline.`);
+      return;
+    }
+    setMethod(m);
+  };
 
-      // 1. Create order if needed (skip if already have an OFFLINE- or real order ID)
-      if (!oid) {
-        const payload = {
-          type: orderType,
-          tableId,
-          items: cart.map((i: any) => ({
-            menuItemId: i.id,
-            quantity: i.qty,
-            notes: i.notes,
-            variationId: i.variationId ?? undefined,
-          })),
-        };
+  // Core bill creation (called after Razorpay success or directly for cash/wallet/comp)
+  const createBillCore = async (razorpayPaymentId?: string) => {
+    const isOffline = typeof navigator !== 'undefined' && !navigator.onLine;
+    let oid = orderId;
 
-        if (isOffline) {
-          oid = `OFFLINE-${Date.now()}`;
-          await enqueueSync({
-            entityType: 'orders',
-            entityId: oid,
-            operation: 'create',
-            payload: { ...payload, isOfflineSync: true, offlineId: oid },
-            branchId: branchId || '',
-            tenantId: tenantId || '',
-          });
-        } else {
-          const orderRes = await apiPost('/api/v1/orders', payload);
-          oid = orderRes.data.id;
-        }
-      }
+    // Resolve OFFLINE- IDs that were already synced in a previous session
+    if (oid?.startsWith('OFFLINE-')) {
+      const resolved = await getResolvedId(oid);
+      if (resolved) oid = resolved;
+    }
 
-      // 2. Apply discount before billing
-      if ((discountPercent > 0 || discountAmount > 0) && oid) {
-        const discountPayload = { discountPercent, discountAmount };
-        if (isOffline) {
-          await enqueueSync({
-            entityType: `orders/${oid}/discount`,
-            entityId: '',
-            operation: 'update',
-            payload: { ...discountPayload, _isDiscount: true },
-            branchId: branchId || '',
-            tenantId: tenantId || '',
-          });
-        } else {
-          await apiPatch(`/api/v1/orders/${oid}/discount`, discountPayload);
-        }
-      }
-
-      // 3. Fetch server-confirmed total (only when oid is a real UUID, not offline)
-      let serverGrandTotal = defaultPayable;
-      if (!isOffline && oid && !oid.startsWith('OFFLINE-')) {
-        try {
-          const orderRes = await apiFetch(`/api/v1/orders/${oid}`);
-          serverGrandTotal = round2(Number(orderRes.data.grandTotal));
-        } catch { /* use defaultPayable fallback */ }
-      }
-
-      // 4. Use cashier override if manually changed, else use server total
-      const billAmount = manualOverride ? round2(finalTotal) : serverGrandTotal;
-
-      // Keep UI in sync with actual billed amount
-      setFinalTotal(billAmount);
-
-      // If cashier didn’t manually touch cash amount, keep it aligned too
-      if (!manualOverride && method === 'cash') {
-        setCashEntered(formatInputAmount(billAmount));
-      }
-
-      // 5. Payments
-      const payments = isSplit
-        ? splitPayments
-        : [
-            {
-              method,
-              amount: method === 'cash' ? round2(parseFloat(cashEntered) || 0) : billAmount,
-            },
-          ];
-
-      const totalPaid = payments.reduce((s, p) => s + Number(p.amount || 0), 0);
-      if (totalPaid < billAmount - 0.01) {
-        throw new Error(
-          `Payment ₹${round2(totalPaid).toFixed(2)} is less than bill amount ₹${billAmount.toFixed(2)}. Please adjust.`
-        );
-      }
-
-      const billPayload = {
-        orderId: oid,
-        branchId,
-        tenantId,
-        shiftId: shiftId || undefined,
-        customerName: customerName || undefined,
-        customerPhone: customerPhone || undefined,
-        customerGstin: customerGstin || undefined,
-        payments,
+    // 1. Create order if needed
+    if (!oid) {
+      const payload = {
+        type: orderType,
+        tableId,
+        items: cart.map((i: any) => ({
+          menuItemId: i.id,
+          quantity: i.qty,
+          notes: i.notes,
+          variationId: i.variationId ?? undefined,
+        })),
       };
 
-      // 6. Create bill
       if (isOffline) {
-        // ── Step 6a: Flush any unsent cart items to the order BEFORE the bill ──
-        // This ensures all items are on the server so the bill is complete.
-        // isOfflineSync: true tells the backend to skip the KDS kitchen notification.
-        const unsentItems = cart.filter((i: any) => !i.alreadySent);
-        if (unsentItems.length > 0 && oid) {
-          await enqueueSync({
-            entityType: `orders/${oid}/items`,
-            entityId: '',
-            operation: 'create',
-            payload: {
-              items: unsentItems.map((i: any) => ({
-                menuItemId:  i.id,
-                quantity:    i.qty,
-                notes:       i.notes   || undefined,
-                variationId: i.variationId || undefined,
-              })),
-              isOfflineSync: true,  // ← skips KDS event on backend
-            },
-            branchId: branchId || '',
-            tenantId: tenantId || '',
-          });
-        }
-
-        // Safety check: if oid is still OFFLINE-xxx, verify the order-create is still
-        // in the sync queue. If it's already gone (order synced but ID not resolved),
-        // we cannot safely bill — the bill would be stuck forever.
-        if (oid!.startsWith('OFFLINE-')) {
-          const queue = await getPendingSyncItems();
-          const orderExists = queue.some(
-            (q) => q.entityId === oid && q.entityType === 'orders' && q.operation === 'create'
-          );
-          if (!orderExists) {
-            throw new Error(
-              'This order has already synced but the bill link is missing. Please refresh the page and re-open the order to bill it.'
-            );
-          }
-        }
-
-        // entityId must be the same OFFLINE-xxx as the order so the DB rewrite
-        // engine can update orderId inside this payload when the order syncs.
+        oid = `OFFLINE-${Date.now()}`;
         await enqueueSync({
-          entityType: 'billing/bills',
-          entityId: oid!,
+          entityType: 'orders',
+          entityId: oid,
           operation: 'create',
-          payload: { ...billPayload, isOfflineSync: true },
+          payload: { ...payload, isOfflineSync: true, offlineId: oid },
           branchId: branchId || '',
           tenantId: tenantId || '',
         });
+      } else {
+        const orderRes = await apiPost('/api/v1/orders', payload);
+        oid = orderRes.data.id;
+      }
+    }
 
-        return {
-          id: oid!,
-          billNumber: `OFF-${Math.floor(Math.random() * 10000)}`,
-          serverGrandTotal: billAmount,
-          gstSummary: [],
-        };
+    // 2. Apply discount before billing
+    if ((discountPercent > 0 || discountAmount > 0) && oid) {
+      const discountPayload = { discountPercent, discountAmount };
+      if (isOffline) {
+        await enqueueSync({
+          entityType: `orders/${oid}/discount`,
+          entityId: '',
+          operation: 'update',
+          payload: { ...discountPayload, _isDiscount: true },
+          branchId: branchId || '',
+          tenantId: tenantId || '',
+        });
+      } else {
+        await apiPatch(`/api/v1/orders/${oid}/discount`, discountPayload);
+      }
+    }
+
+    // 3. Fetch server-confirmed total (only when online)
+    let serverGrandTotal = defaultPayable;
+    if (!isOffline && oid && !oid.startsWith('OFFLINE-')) {
+      try {
+        const orderRes = await apiFetch(`/api/v1/orders/${oid}`);
+        serverGrandTotal = round2(Number(orderRes.data.grandTotal));
+      } catch { /* use defaultPayable fallback */ }
+    }
+
+    // 4. Use cashier override if manually changed, else use server total
+    const billAmount = manualOverride ? round2(finalTotal) : serverGrandTotal;
+    setFinalTotal(billAmount);
+    if (!manualOverride && method === 'cash') {
+      setCashEntered(formatInputAmount(billAmount));
+    }
+
+    // 5. Payments
+    const payments = isSplit
+      ? splitPayments
+      : [
+          {
+            method,
+            amount: method === 'cash' ? round2(parseFloat(cashEntered) || 0) : billAmount,
+            ...(razorpayPaymentId ? { referenceNo: razorpayPaymentId } : {}),
+          },
+        ];
+
+    const totalPaid = payments.reduce((s, p) => s + Number(p.amount || 0), 0);
+    if (totalPaid < billAmount - 0.01) {
+      throw new Error(
+        `Payment ₹${round2(totalPaid).toFixed(2)} is less than bill amount ₹${billAmount.toFixed(2)}. Please adjust.`
+      );
+    }
+
+    const billPayload = {
+      orderId: oid,
+      branchId,
+      tenantId,
+      shiftId: shiftId || undefined,
+      customerName: customerName || undefined,
+      customerPhone: customerPhone || undefined,
+      customerGstin: customerGstin || undefined,
+      payments,
+    };
+
+    // 6. Create bill
+    if (isOffline) {
+      const unsentItems = cart.filter((i: any) => !i.alreadySent);
+      if (unsentItems.length > 0 && oid) {
+        await enqueueSync({
+          entityType: `orders/${oid}/items`,
+          entityId: '',
+          operation: 'create',
+          payload: {
+            items: unsentItems.map((i: any) => ({
+              menuItemId:  i.id,
+              quantity:    i.qty,
+              notes:       i.notes   || undefined,
+              variationId: i.variationId || undefined,
+            })),
+            isOfflineSync: true,
+          },
+          branchId: branchId || '',
+          tenantId: tenantId || '',
+        });
       }
 
-      const res = await apiPost('/api/v1/billing/bills', billPayload);
+      if (oid!.startsWith('OFFLINE-')) {
+        const queue = await getPendingSyncItems();
+        const orderExists = queue.some(
+          (q) => q.entityId === oid && q.entityType === 'orders' && q.operation === 'create'
+        );
+        if (!orderExists) {
+          throw new Error(
+            'This order has already synced but the bill link is missing. Please refresh the page and re-open the order to bill it.'
+          );
+        }
+      }
 
-      return { ...res.data, serverGrandTotal: billAmount };
+      await enqueueSync({
+        entityType: 'billing/bills',
+        entityId: oid!,
+        operation: 'create',
+        payload: { ...billPayload, isOfflineSync: true },
+        branchId: branchId || '',
+        tenantId: tenantId || '',
+      });
+
+      return {
+        id: oid!,
+        billNumber: `OFF-${Math.floor(Math.random() * 10000)}`,
+        serverGrandTotal: billAmount,
+        gstSummary: [],
+      };
+    }
+
+    const res = await apiPost('/api/v1/billing/bills', billPayload);
+    return { ...res.data, serverGrandTotal: billAmount };
+  };
+
+  const billMutation = useMutation({
+    networkMode: 'always',
+    mutationFn: async () => {
+      // For Razorpay methods (UPI/Card/Credit), open Razorpay popup first
+      if (isRazorpayMethod && isOnline) {
+        return new Promise<any>((resolve, reject) => {
+          setIsRazorpayPending(true);
+
+          // 1. Create Razorpay order on our backend (uses tenant's own keys)
+          api.post('/api/v1/billing/razorpay/create-order', { amount: finalTotal })
+            .then((res) => {
+              const order = res.data?.data || res.data;
+
+              const options = {
+                key: order.keyId,
+                amount: order.amount,
+                currency: order.currency,
+                name: 'Bill Payment',
+                description: `POS Bill`,
+                order_id: order.orderId,
+                handler: async (response: any) => {
+                  try {
+                    // 2. Verify signature on backend
+                    await api.post('/api/v1/billing/razorpay/verify-payment', {
+                      razorpayOrderId: response.razorpay_order_id,
+                      razorpayPaymentId: response.razorpay_payment_id,
+                      razorpaySignature: response.razorpay_signature,
+                    });
+
+                    // 3. Create the actual bill with razorpayPaymentId as referenceNo
+                    const bill = await createBillCore(response.razorpay_payment_id);
+                    resolve(bill);
+                  } catch (e) {
+                    reject(e);
+                  } finally {
+                    setIsRazorpayPending(false);
+                  }
+                },
+                modal: {
+                  ondismiss: () => {
+                    setIsRazorpayPending(false);
+                    reject(new Error('Payment was cancelled.'));
+                  },
+                },
+                theme: { color: '#f59e0b' },
+              };
+
+              const rzp = new (window as any).Razorpay(options);
+              rzp.on('payment.failed', (response: any) => {
+                setIsRazorpayPending(false);
+                reject(new Error(response.error?.description || 'Payment failed'));
+              });
+              rzp.open();
+            })
+            .catch((e) => {
+              setIsRazorpayPending(false);
+              reject(e);
+            });
+        });
+      }
+
+      // Cash / Wallet / Complimentary — direct flow (works offline too)
+      return createBillCore();
     },
     onSuccess: (data) => {
       setBillData(data);
       setFinalTotal(round2(data.serverGrandTotal));
       setBilled(true);
       toast.success('Bill created successfully!');
+
+      // Fire-and-forget: send email receipt if email was provided
+      if (customerEmail.trim() && data?.id) {
+        apiPost(`/api/v1/billing/bills/${data.id}/email`, { email: customerEmail.trim() })
+          .then(() => toast.success('Receipt emailed to ' + customerEmail.trim()))
+          .catch((err: any) => {
+            console.error('Email send failed:', err);
+            toast.error('Could not send email receipt. You can resend from the billing page.');
+          });
+      }
     },
     onError: (err: any) => {
       const msg = err?.response?.data?.message || err?.message || 'Billing failed';
@@ -300,6 +377,8 @@ export function BillingModal({
       toast.error('Print failed. Check browser console.');
     }
   };
+
+  const isPending = billMutation.isPending || isRazorpayPending;
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
@@ -345,6 +424,14 @@ export function BillingModal({
             </div>
           ) : (
             <div className="p-6 space-y-5">
+
+              {/* Offline banner */}
+              {!isOnline && (
+                <div className="flex items-center gap-2 bg-amber-500/10 border border-amber-500/30 rounded-lg px-3 py-2 text-xs text-amber-600 dark:text-amber-400">
+                  <WifiOff size={13} />
+                  <span>You are offline — only <strong>Cash</strong>, Wallet &amp; Complimentary payments are available.</span>
+                </div>
+              )}
 
               {/* Summary */}
               <div className="bg-slate-50 dark:bg-slate-800 rounded-xl p-4 space-y-2 text-sm">
@@ -442,11 +529,24 @@ export function BillingModal({
                     onChange={(e) => setCustomerPhone(e.target.value)}
                   />
                 </div>
-                <div className="col-span-2">
-                  <label className="label">Customer GSTIN (for B2B)</label>
+                <div>
+                  <label className="label">Email <span className="text-slate-900 dark:text-slate-500 font-normal">(for receipt)</span></label>
+                  <div className="relative">
+                    <Mail size={13} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-900 dark:text-slate-500" />
+                    <input
+                      className="input pl-8"
+                      type="email"
+                      placeholder="Optional"
+                      value={customerEmail}
+                      onChange={(e) => setCustomerEmail(e.target.value)}
+                    />
+                  </div>
+                </div>
+                <div>
+                  <label className="label">GSTIN <span className="text-slate-900 dark:text-slate-500 font-normal">(B2B)</span></label>
                   <input
                     className="input"
-                    placeholder="Optional — triggers IGST"
+                    placeholder="Optional"
                     value={customerGstin}
                     onChange={(e) => setCustomerGstin(e.target.value)}
                   />
@@ -471,22 +571,42 @@ export function BillingModal({
                 </div>
 
                 <div className="grid grid-cols-3 gap-2">
-                  {PAYMENT_METHODS.map((m) => (
-                    <button
-                      key={m.id}
-                      onClick={() => setMethod(m.id)}
-                      className={cn(
-                        'flex flex-col items-center gap-1 rounded-xl py-3 text-xs font-medium transition-all border',
-                        method === m.id && !isSplit
-                          ? 'border-amber-500 bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
-                          : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-400 hover:border-slate-300 dark:border-slate-600',
-                      )}
-                    >
-                      <span className="text-lg">{m.icon}</span>
-                      {m.label}
-                    </button>
-                  ))}
+                  {PAYMENT_METHODS.map((m) => {
+                    const isBlocked = !isOnline && RAZORPAY_METHODS.includes(m.id);
+                    return (
+                      <button
+                        key={m.id}
+                        onClick={() => handleMethodSelect(m.id)}
+                        disabled={isBlocked}
+                        title={isBlocked ? 'Unavailable offline — use Cash' : undefined}
+                        className={cn(
+                          'flex flex-col items-center gap-1 rounded-xl py-3 text-xs font-medium transition-all border relative',
+                          isBlocked
+                            ? 'border-slate-200 dark:border-slate-700 bg-slate-100 dark:bg-slate-800/50 text-slate-400 dark:text-slate-600 cursor-not-allowed opacity-50'
+                            : method === m.id && !isSplit
+                            ? 'border-amber-500 bg-amber-100 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400'
+                            : 'border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-800 text-slate-900 dark:text-slate-400 hover:border-slate-300 dark:border-slate-600',
+                        )}
+                      >
+                        <span className="text-lg">{m.icon}</span>
+                        {m.label}
+                        {!isBlocked && RAZORPAY_METHODS.includes(m.id) && (
+                          <span className="text-[8px] text-emerald-600 dark:text-emerald-500 font-semibold">via Razorpay</span>
+                        )}
+                        {isBlocked && (
+                          <WifiOff size={10} className="absolute top-1 right-1 text-slate-400" />
+                        )}
+                      </button>
+                    );
+                  })}
                 </div>
+
+                {/* Razorpay notice */}
+                {isRazorpayMethod && isOnline && (
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 text-center">
+                    📲 Razorpay checkout will open when you click Pay.
+                  </p>
+                )}
               </div>
 
               {/* Cash tendered */}
@@ -541,13 +661,16 @@ export function BillingModal({
             <button
               onClick={() => billMutation.mutate()}
               disabled={
-                billMutation.isPending ||
+                isPending ||
+                (!isOnline && RAZORPAY_METHODS.includes(method) && !isSplit) ||
                 (method === 'cash' && !isSplit && cashAmount < finalTotal)
               }
               className="btn-primary w-full py-3 text-base"
             >
-              {billMutation.isPending
-                ? <><Loader2 size={16} className="animate-spin" /> Processing...</>
+              {isPending
+                ? <><Loader2 size={16} className="animate-spin" /> {isRazorpayPending ? 'Waiting for payment...' : 'Processing...'}</>
+                : isRazorpayMethod && isOnline
+                ? `Pay ₹${round2(finalTotal).toFixed(2)} via Razorpay`
                 : `Collect ₹${round2(finalTotal).toFixed(2)}`}
             </button>
           </div>
