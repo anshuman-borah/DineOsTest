@@ -14,7 +14,6 @@ import relativeTime from 'dayjs/plugin/relativeTime';
 
 dayjs.extend(relativeTime);
 
-// ─── Denomination helper ───────────────────────────────────────────────────────
 const DENOMS = [
   { key: 'note2000', label: '₹2000', value: 2000 },
   { key: 'note500',  label: '₹500',  value: 500  },
@@ -38,7 +37,6 @@ function fmt(n: number | string) {
 
 function RoleBadge({ role }: { role?: string }) {
   if (!role) return null;
-
   const colors: Record<string, string> = {
     owner:              'bg-amber-500/20 text-amber-400',
     manager:            'bg-blue-500/20 text-blue-400',
@@ -48,16 +46,12 @@ function RoleBadge({ role }: { role?: string }) {
     kitchen:            'bg-orange-500/20 text-orange-400',
     inventory:          'bg-slate-500/20 text-slate-400',
   };
-
-  // Format: restaurant_manager → Restaurant Manager
-  const displayName = role.replace(/_/g, ' ');
-
   return (
     <span className={cn(
       'text-[10px] px-1.5 py-0.5 rounded-full font-medium capitalize',
       colors[role] || 'bg-slate-500/20 text-slate-400',
     )}>
-      {displayName}
+      {role.replace(/_/g, ' ')}
     </span>
   );
 }
@@ -74,66 +68,23 @@ function UserCell({ user, fallbackId }: { user?: any; fallbackId?: string }) {
       </div>
     );
   }
-  if (fallbackId) {
-    return (
-      <span className="text-slate-500 text-xs font-mono">
-        {fallbackId.slice(0, 8)}…
-      </span>
-    );
-  }
+  if (fallbackId) return <span className="text-slate-500 text-xs font-mono">{fallbackId.slice(0, 8)}…</span>;
   return <span className="text-slate-600">—</span>;
 }
 
-function DenominationCount({
-  label, counts, onChange,
-}: {
-  label: string;
-  counts: Record<string, number>;
-  onChange: (k: string, v: number) => void;
-}) {
-  const total = denomTotal(counts);
-  return (
-    <div className="card space-y-3">
-      <div className="flex items-center justify-between">
-        <h3 className="font-semibold text-white">{label}</h3>
-        <span className="text-amber-400 font-bold text-lg">{fmt(total)}</span>
-      </div>
-      <div className="grid grid-cols-2 gap-2">
-        {DENOMS.map((d) => (
-          <div key={d.key} className="flex items-center gap-2">
-            <span className="text-xs text-slate-400 w-14">{d.label}</span>
-            <input
-              type="number"
-              min={0}
-              value={counts[d.key] || ''}
-              onChange={(e) => onChange(d.key, parseInt(e.target.value) || 0)}
-              className="input text-center py-1 text-sm w-16"
-              placeholder="0"
-            />
-            <span className="text-xs text-slate-500 w-20 text-right">
-              = {fmt((counts[d.key] || 0) * d.value)}
-            </span>
-          </div>
-        ))}
-      </div>
-    </div>
-  );
-}
-
-// ─── Main Page ─────────────────────────────────────────────────────────────────
 export default function ShiftsPage() {
   const qc = useQueryClient();
   const { branchId } = useAuthStore();
 
-  // ← Use string for opening cash so input can be truly empty
-  const [openingCash,   setOpeningCash]   = useState<string>('');
-  const [closingCounts, setClosingCounts] = useState<Record<string, number>>({});
-  const [notes,         setNotes]         = useState('');
-  const [showOpen,      setShowOpen]      = useState(false);
-  const [showClose,     setShowClose]     = useState(false);
-  const [expandedShift, setExpandedShift] = useState<string | null>(null);
+  const [openingCash,      setOpeningCash]      = useState<string>('');
+  const [closingCashInput, setClosingCashInput] = useState<string>('');
+  const [closingCounts,    setClosingCounts]    = useState<Record<string, number>>({});
+  const [showDenominations, setShowDenominations] = useState(false);
+  const [notes,            setNotes]            = useState('');
+  const [showOpen,         setShowOpen]         = useState(false);
+  const [showClose,        setShowClose]        = useState(false);
+  const [expandedShift,    setExpandedShift]    = useState<string | null>(null);
 
-  // ── Active shift ───────────────────────────────────────────────────────────
   const { data: activeShift } = useQuery({
     queryKey: ['activeShift', branchId],
     queryFn:  () => apiFetch('/api/v1/shifts/active').then((r) => r.data).catch(() => null),
@@ -141,7 +92,6 @@ export default function ShiftsPage() {
     enabled: !!branchId,
   });
 
-  // ── Shifts list ────────────────────────────────────────────────────────────
   const { data: shifts = [] } = useQuery({
     queryKey: ['shifts', branchId],
     queryFn:  () => apiFetch('/api/v1/shifts').then((r) => r.data),
@@ -149,13 +99,17 @@ export default function ShiftsPage() {
   });
 
   const openingCashNum = parseFloat(openingCash) || 0;
-  const closingTotal   = denomTotal(closingCounts);
-  const expectedCash   = activeShift
+
+  // ← If denominations are filled use that total, else use direct input
+  const denomsTotal   = denomTotal(closingCounts);
+  const hasDenoms     = denomsTotal > 0;
+  const closingTotal  = hasDenoms ? denomsTotal : (parseFloat(closingCashInput) || 0);
+
+  const expectedCash = activeShift
     ? Number(activeShift.openingCash || 0) + Number(activeShift.cashSales || 0)
     : 0;
   const difference = closingTotal - expectedCash;
 
-  // ── Mutations ──────────────────────────────────────────────────────────────
   const openMutation = useMutation({
     mutationFn: () => apiPost('/api/v1/shifts/open', { openingCash: openingCashNum }),
     onSuccess: () => {
@@ -174,7 +128,7 @@ export default function ShiftsPage() {
       if (!activeShift?.id) throw new Error('No active shift');
       return apiPost(`/api/v1/shifts/${activeShift.id}/close`, {
         closingCash:   closingTotal,
-        denominations: closingCounts,
+        denominations: hasDenoms ? closingCounts : undefined,
         notes:         notes || undefined,
       });
     },
@@ -184,7 +138,9 @@ export default function ShiftsPage() {
       qc.invalidateQueries({ queryKey: ['shifts'] });
       qc.invalidateQueries({ queryKey: ['current-shift'] });
       setShowClose(false);
+      setClosingCashInput('');
       setClosingCounts({});
+      setShowDenominations(false);
       setNotes('');
     },
     onError: (e: any) => toast.error(e.response?.data?.message || 'Failed to close shift'),
@@ -212,25 +168,18 @@ export default function ShiftsPage() {
         <div className="card border-emerald-700/50 bg-emerald-900/10">
           <div className="flex items-center gap-3 mb-3">
             <span className="w-3 h-3 rounded-full bg-emerald-500 animate-pulse" />
-            <h2 className="font-bold text-emerald-400">
-              Active Shift — {activeShift.shiftNumber}
-            </h2>
+            <h2 className="font-bold text-emerald-400">Active Shift — {activeShift.shiftNumber}</h2>
             <span className="text-xs text-slate-400">
               Since {dayjs(activeShift.openedAt).format('D MMM, h:mm A')}
               {' · '}{dayjs(activeShift.openedAt).fromNow()}
             </span>
           </div>
-
-          {/* Who opened it */}
           <div className="flex items-center gap-2 mb-4 text-sm">
             <User size={13} className="text-slate-500" />
             <span className="text-slate-400">Opened by</span>
-            <span className="text-white font-medium">
-              {activeShift.openedByUser?.fullName || 'Staff'}
-            </span>
+            <span className="text-white font-medium">{activeShift.openedByUser?.fullName || 'Staff'}</span>
             <RoleBadge role={activeShift.openedByUser?.role} />
           </div>
-
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             {[
               { label: 'Total Sales',  value: fmt(activeShift.totalSales),  icon: TrendingUp,  color: 'text-amber-400'   },
@@ -246,25 +195,6 @@ export default function ShiftsPage() {
               </div>
             ))}
           </div>
-
-          {(Number(activeShift.upiSales) > 0 ||
-            Number(activeShift.cardSales) > 0 ||
-            Number(activeShift.walletSales) > 0) && (
-            <div className="mt-4 pt-4 border-t border-slate-700 grid grid-cols-3 gap-3 text-sm">
-              <div>
-                <div className="text-slate-500 text-xs mb-0.5">UPI</div>
-                <div className="font-medium text-white">{fmt(activeShift.upiSales)}</div>
-              </div>
-              <div>
-                <div className="text-slate-500 text-xs mb-0.5">Card</div>
-                <div className="font-medium text-white">{fmt(activeShift.cardSales)}</div>
-              </div>
-              <div>
-                <div className="text-slate-500 text-xs mb-0.5">Wallet</div>
-                <div className="font-medium text-white">{fmt(activeShift.walletSales)}</div>
-              </div>
-            </div>
-          )}
         </div>
       ) : (
         <div className="card text-center py-8 text-slate-500">
@@ -275,9 +205,7 @@ export default function ShiftsPage() {
 
       {/* Shift History */}
       <div className="card p-0 overflow-hidden">
-        <div className="px-4 py-3 border-b border-slate-800 font-semibold text-white">
-          Shift History
-        </div>
+        <div className="px-4 py-3 border-b border-slate-800 font-semibold text-white">Shift History</div>
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead className="bg-slate-800/50">
@@ -297,37 +225,23 @@ export default function ShiftsPage() {
             </thead>
             <tbody>
               {(Array.isArray(shifts) ? shifts : []).map((s: any) => {
-                const diff     = Number(s.cashDifference || 0);
+                const diff = Number(s.cashDifference || 0);
                 const isExpand = expandedShift === s.id;
                 return (
                   <>
-                    <tr
-                      key={s.id}
-                      className="table-row cursor-pointer"
-                      onClick={() => setExpandedShift(isExpand ? null : s.id)}
-                    >
+                    <tr key={s.id} className="table-row cursor-pointer"
+                      onClick={() => setExpandedShift(isExpand ? null : s.id)}>
                       <td className="td font-medium text-amber-400">{s.shiftNumber}</td>
-                      <td className="td">
-                        <UserCell user={s.openedByUser} fallbackId={s.openedBy} />
-                      </td>
-                      <td className="td">
-                        <UserCell user={s.closedByUser} fallbackId={s.closedBy} />
-                      </td>
-                      <td className="td text-slate-400 text-xs">
-                        {dayjs(s.openedAt).format('D MMM, h:mm A')}
-                      </td>
+                      <td className="td"><UserCell user={s.openedByUser} fallbackId={s.openedBy} /></td>
+                      <td className="td"><UserCell user={s.closedByUser} fallbackId={s.closedBy} /></td>
+                      <td className="td text-slate-400 text-xs">{dayjs(s.openedAt).format('D MMM, h:mm A')}</td>
                       <td className="td text-right">{fmt(s.openingCash)}</td>
                       <td className="td text-right">{fmt(s.cashSales)}</td>
                       <td className="td text-right">{fmt(s.expectedCash)}</td>
                       <td className="td text-right">{fmt(s.closingCash)}</td>
                       <td className={cn('td text-right font-mono font-medium',
-                        diff < 0 ? 'text-red-400' :
-                        diff > 0 ? 'text-emerald-400' :
-                        'text-slate-400',
-                      )}>
-                        {diff !== 0
-                          ? `${diff > 0 ? '+' : ''}${fmt(Math.abs(diff))}`
-                          : '₹0'}
+                        diff < 0 ? 'text-red-400' : diff > 0 ? 'text-emerald-400' : 'text-slate-400')}>
+                        {diff !== 0 ? `${diff > 0 ? '+' : ''}${fmt(Math.abs(diff))}` : '₹0'}
                       </td>
                       <td className="td text-center">
                         <span className={s.status === 'open' ? 'badge-green' : 'badge-slate'}>
@@ -338,47 +252,25 @@ export default function ShiftsPage() {
                         {isExpand ? <ChevronUp size={14} /> : <ChevronDown size={14} />}
                       </td>
                     </tr>
-
                     {isExpand && (
                       <tr key={`${s.id}-exp`} className="bg-slate-800/30">
                         <td colSpan={11} className="px-6 py-4">
                           <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-xs">
-                            <div>
-                              <div className="text-slate-500 mb-1">UPI Sales</div>
-                              <div className="font-medium text-white">{fmt(s.upiSales)}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-500 mb-1">Card Sales</div>
-                              <div className="font-medium text-white">{fmt(s.cardSales)}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-500 mb-1">Wallet Sales</div>
-                              <div className="font-medium text-white">{fmt(s.walletSales)}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-500 mb-1">Complimentary</div>
-                              <div className="font-medium text-emerald-400">{fmt(s.complimentary)}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-500 mb-1">CGST Collected</div>
-                              <div className="font-medium text-blue-400">{fmt(s.totalCgst)}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-500 mb-1">SGST Collected</div>
-                              <div className="font-medium text-purple-400">{fmt(s.totalSgst)}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-500 mb-1">Total Orders</div>
-                              <div className="font-medium text-white">{s.totalOrders}</div>
-                            </div>
-                            <div>
-                              <div className="text-slate-500 mb-1">Duration</div>
-                              <div className="font-medium text-white">
-                                {s.closedAt
-                                  ? `${dayjs(s.closedAt).diff(dayjs(s.openedAt), 'hour')}h ${dayjs(s.closedAt).diff(dayjs(s.openedAt), 'minute') % 60}m`
-                                  : 'Ongoing'}
+                            {[
+                              { label: 'UPI Sales',      value: fmt(s.upiSales),    color: 'text-white' },
+                              { label: 'Card Sales',     value: fmt(s.cardSales),   color: 'text-white' },
+                              { label: 'Wallet Sales',   value: fmt(s.walletSales), color: 'text-white' },
+                              { label: 'Complimentary',  value: fmt(s.complimentary), color: 'text-emerald-400' },
+                              { label: 'CGST Collected', value: fmt(s.totalCgst),   color: 'text-blue-400' },
+                              { label: 'SGST Collected', value: fmt(s.totalSgst),   color: 'text-purple-400' },
+                              { label: 'Total Orders',   value: s.totalOrders,      color: 'text-white' },
+                              { label: 'Duration',       value: s.closedAt ? `${dayjs(s.closedAt).diff(dayjs(s.openedAt), 'hour')}h ${dayjs(s.closedAt).diff(dayjs(s.openedAt), 'minute') % 60}m` : 'Ongoing', color: 'text-white' },
+                            ].map(({ label, value, color }) => (
+                              <div key={label}>
+                                <div className="text-slate-500 mb-1">{label}</div>
+                                <div className={cn('font-medium', color)}>{value}</div>
                               </div>
-                            </div>
+                            ))}
                             {s.notes && (
                               <div className="col-span-4">
                                 <div className="text-slate-500 mb-1">Notes</div>
@@ -393,11 +285,7 @@ export default function ShiftsPage() {
                 );
               })}
               {(!shifts || shifts.length === 0) && (
-                <tr>
-                  <td colSpan={11} className="td text-center text-slate-500 py-8">
-                    No shifts found
-                  </td>
-                </tr>
+                <tr><td colSpan={11} className="td text-center text-slate-500 py-8">No shifts found</td></tr>
               )}
             </tbody>
           </table>
@@ -409,61 +297,26 @@ export default function ShiftsPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
           <div className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-sm p-6 space-y-4">
             <h3 className="font-bold text-white text-lg">Open New Shift</h3>
-            <p className="text-sm text-slate-400">
-              Count the cash in your drawer and enter the opening amount.
-            </p>
-
             <div className="space-y-2">
               <label className="label">Opening Cash Amount (₹)</label>
-              {/* ← value is string now so input can be truly empty */}
-              <input
-                type="number"
-                min="0"
-                step="100"
-                value={openingCash}
+              <input type="number" min="0" step="100" value={openingCash}
                 onChange={(e) => setOpeningCash(e.target.value)}
-                className="input w-full text-2xl font-bold h-14"
-                placeholder="Enter amount"
-                autoFocus
-              />
-              <p className="text-xs text-slate-500">
-                Enter the total cash physically present in the drawer right now.
-              </p>
+                className="input w-full text-2xl font-bold h-14" placeholder="Enter amount" autoFocus />
+              <p className="text-xs text-slate-500">Total cash physically present in the drawer right now.</p>
             </div>
-
-            {/* Quick amounts */}
             <div className="flex gap-2 flex-wrap">
               {[0, 500, 1000, 2000, 5000].map((v) => (
-                <button
-                  key={v}
-                  onClick={() => setOpeningCash(v === 0 ? '0' : String(v))}
-                  className={cn(
-                    'text-xs px-3 py-1.5 rounded-lg border transition-all',
-                    openingCashNum === v
-                      ? 'border-amber-500 bg-amber-500/10 text-amber-400'
-                      : 'border-slate-700 text-slate-400 hover:border-slate-500',
-                  )}
-                >
+                <button key={v} onClick={() => setOpeningCash(v === 0 ? '0' : String(v))}
+                  className={cn('text-xs px-3 py-1.5 rounded-lg border transition-all',
+                    openingCashNum === v ? 'border-amber-500 bg-amber-500/10 text-amber-400' : 'border-slate-700 text-slate-400 hover:border-slate-500')}>
                   ₹{v.toLocaleString('en-IN')}
                 </button>
               ))}
             </div>
-
             <div className="flex gap-3 pt-2">
-              <button
-                onClick={() => { setShowOpen(false); setOpeningCash(''); }}
-                className="btn-secondary flex-1"
-              >
-                Cancel
-              </button>
-              <button
-                onClick={() => openMutation.mutate()}
-                disabled={openMutation.isPending}
-                className="btn-primary flex-1"
-              >
-                {openMutation.isPending
-                  ? 'Opening...'
-                  : `Open Shift — ${fmt(openingCashNum)}`}
+              <button onClick={() => { setShowOpen(false); setOpeningCash(''); }} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={() => openMutation.mutate()} disabled={openMutation.isPending} className="btn-primary flex-1">
+                {openMutation.isPending ? 'Opening...' : `Open Shift — ${fmt(openingCashNum)}`}
               </button>
             </div>
           </div>
@@ -472,12 +325,10 @@ export default function ShiftsPage() {
 
       {/* ── Close Shift Modal ────────────────────────────────────────────────── */}
       {showClose && activeShift && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4 overflow-y-auto">
-          <div className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-lg p-6 space-y-4 my-4">
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 p-4">
+          <div className="bg-slate-900 rounded-2xl border border-slate-700 w-full max-w-md p-6 space-y-4">
             <div>
-              <h3 className="font-bold text-white text-lg">
-                Close Shift — {activeShift.shiftNumber}
-              </h3>
+              <h3 className="font-bold text-white text-lg">Close Shift — {activeShift.shiftNumber}</h3>
               <p className="text-xs text-slate-400 mt-1">
                 Opened {dayjs(activeShift.openedAt).format('D MMM, h:mm A')} ·{' '}
                 {dayjs(activeShift.openedAt).fromNow(true)} ago
@@ -490,57 +341,100 @@ export default function ShiftsPage() {
             {/* Summary */}
             <div className="bg-slate-800 rounded-xl p-4 space-y-2 text-sm">
               <div className="flex justify-between text-slate-400">
-                <span>Opening Cash</span>
-                <span className="text-white">{fmt(activeShift.openingCash)}</span>
+                <span>Opening Cash</span><span className="text-white">{fmt(activeShift.openingCash)}</span>
               </div>
               <div className="flex justify-between text-slate-400">
-                <span>Cash Sales during shift</span>
-                <span className="text-emerald-400">+{fmt(activeShift.cashSales)}</span>
+                <span>Cash Sales</span><span className="text-emerald-400">+{fmt(activeShift.cashSales)}</span>
               </div>
               <div className="flex justify-between font-bold border-t border-slate-700 pt-2">
-                <span className="text-slate-300">Expected Cash in Drawer</span>
+                <span className="text-slate-300">Expected in Drawer</span>
                 <span className="text-white">{fmt(expectedCash)}</span>
               </div>
               <div className="flex justify-between font-bold">
                 <span className="text-slate-300">Counted Cash</span>
                 <span className="text-amber-400">{fmt(closingTotal)}</span>
               </div>
-              <div className={cn(
-                'flex justify-between font-bold border-t border-slate-700 pt-2',
-                difference < 0 ? 'text-red-400' :
-                difference > 0 ? 'text-emerald-400' :
-                'text-slate-400',
-              )}>
+              <div className={cn('flex justify-between font-bold border-t border-slate-700 pt-2',
+                difference < 0 ? 'text-red-400' : difference > 0 ? 'text-emerald-400' : 'text-slate-400')}>
                 <span>Difference</span>
                 <span>{difference > 0 ? '+' : ''}{fmt(difference)}</span>
               </div>
             </div>
 
-            <DenominationCount
-              label="Count Closing Cash by Denomination"
-              counts={closingCounts}
-              onChange={(k, v) => setClosingCounts((c) => ({ ...c, [k]: v }))}
-            />
+            {/* ← Direct cash input — primary method */}
+            <div>
+              <label className="label">Closing Cash Amount (₹)</label>
+              <input
+                type="number" min="0" step="1"
+                value={hasDenoms ? denomsTotal : closingCashInput}
+                onChange={(e) => {
+                  setClosingCashInput(e.target.value);
+                  // Clear denominations if user types directly
+                  setClosingCounts({});
+                }}
+                className="input w-full text-2xl font-bold h-14"
+                placeholder="Enter total cash counted"
+                autoFocus
+                disabled={hasDenoms}
+              />
+              <p className="text-xs text-slate-500 mt-1">
+                Count the physical cash and enter the total. Or use denomination breakdown below.
+              </p>
+            </div>
 
+            {/* ← Denominations — collapsible, optional */}
+            <div>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowDenominations(!showDenominations);
+                  if (showDenominations) {
+                    setClosingCounts({});
+                  }
+                }}
+                className="flex items-center gap-2 text-xs text-slate-400 hover:text-slate-200 transition-colors"
+              >
+                {showDenominations ? <ChevronUp size={13} /> : <ChevronDown size={13} />}
+                {showDenominations ? 'Hide denomination breakdown' : 'Use denomination breakdown (optional)'}
+              </button>
+
+              {showDenominations && (
+                <div className="mt-3 bg-slate-800/50 rounded-xl p-3 space-y-2">
+                  <div className="flex items-center justify-between mb-2">
+                    <span className="text-xs text-slate-400">Denomination Count</span>
+                    <span className="text-amber-400 font-bold text-sm">{fmt(denomsTotal)}</span>
+                  </div>
+                  <div className="grid grid-cols-2 gap-2">
+                    {DENOMS.map((d) => (
+                      <div key={d.key} className="flex items-center gap-2">
+                        <span className="text-xs text-slate-400 w-14">{d.label}</span>
+                        <input
+                          type="number" min={0}
+                          value={closingCounts[d.key] || ''}
+                          onChange={(e) => setClosingCounts((c) => ({ ...c, [d.key]: parseInt(e.target.value) || 0 }))}
+                          className="input text-center py-1 text-sm w-16" placeholder="0"
+                        />
+                        <span className="text-xs text-slate-500 w-16 text-right">
+                          = {fmt((closingCounts[d.key] || 0) * d.value)}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Notes */}
             <div>
               <label className="label">Handover Notes (Optional)</label>
-              <textarea
-                className="input" rows={2}
-                value={notes}
+              <textarea className="input" rows={2} value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="Any remarks, handover notes, issues..."
-              />
+                placeholder="Any remarks, handover notes, issues..." />
             </div>
 
             <div className="flex gap-3">
-              <button onClick={() => setShowClose(false)} className="btn-secondary flex-1">
-                Cancel
-              </button>
-              <button
-                onClick={() => closeMutation.mutate()}
-                disabled={closeMutation.isPending}
-                className="btn-danger flex-1"
-              >
+              <button onClick={() => setShowClose(false)} className="btn-secondary flex-1">Cancel</button>
+              <button onClick={() => closeMutation.mutate()} disabled={closeMutation.isPending} className="btn-danger flex-1">
                 {closeMutation.isPending ? 'Closing...' : 'Close Shift'}
               </button>
             </div>
